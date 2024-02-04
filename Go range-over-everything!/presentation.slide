@@ -1,0 +1,154 @@
+# Go range-over-everything!
+8 Feb 2024
+Tags: go1.22, rangefunc, stealthrocket
+Summary: This presentation looks at the evolution of the range keyword in Go 1.22, and in particular the range function experiment.
+
+Achille Roussel
+CTO, Stealth Rocket
+achille@stealthrocket.tech
+https://stealthrocket.tech
+
+## Speaker
+
+.link https://github.com/achille-roussel
+
+- Moved to San Francisco in 2011
+- Go developer since 2014
+- Go contributor since 2023 (wasip1)
+- Open source projects: kafka-go, parquet-go
+- Career at Twitch, Facebook, Segment, Twilio
+- Co-Founded [Stealth Rocket](https://stealthrocket.tech) in 2023
+
+: Originally from France, dropped out of college in 2011 to move to San Francisco.
+: I've been using Go for almost 10 years ago now.
+: I became a contributor to the Go project last year, working on the WASI preview 1 port that was released in Go 1.21.
+: 12 years of software engineering in development and infrastructure on a couple of rocket ships.
+: Before we jump into today's topic, let me tell you a bit about Stealth Rocket.
+
+## Stealth Rocket
+
+.link https://stealthrocket.tech
+
+Help software engineers develop reliable distributed systems:
+- Asynchronous/Background jobs
+- Event streaming pipelines
+- Workflow orchestration
+
+: This project is the offspring of a system that my team and I developed when we were at Segment called Centrifuge.
+: Typical use cases include subscription billing, integrations with public APIs, or sending requests to webhook URLs, etc...
+
+Simple programming model based on **durable coroutines**:
+
+.link https://github.com/stealthrocket/coroutine
+
+: At the last Gophercon in San Diego we released this source-to-source Go compiler that turns goroutines into resumable state machines.
+: If you're a software engineer and you're developing those types of systems, reach out to us because you will like what we're cooking!
+
+## Let's talk about the range keyword!
+
+: I'm going to show you a lot of code examples.
+: I know that sometimes we have friends joining us from other language communities so I'll do a very quick intro of what the range keyword is in Go.
+
+## range over slices
+
+- one iteration variable:
+
+.code slice1.go /START OMIT/,/END OMIT/
+
+    0
+    1
+    2
+
+- two iteration variables:
+
+.code slice2.go /START OMIT/,/END OMIT/
+
+    0: hello
+    1: world
+    2: !
+
+: It's also possible to omit the variable altogether, which can be useful sometimes but isn't common.
+
+## range over maps
+
+- one iteration variable:
+
+.code map1.go /START OMIT/,/END OMIT/
+
+    one
+    two
+    three
+
+- two iteration variables:
+
+.code map2.go /START OMIT/,/END OMIT/
+
+    one: 1
+    two: 2
+    three: 3
+
+## range over strings
+
+.code string2.go /START OMIT/,/END OMIT/
+
+    0: H
+    1: e
+    2: l
+    3: l
+    4: o
+    5: ,
+    6:
+    7: 世
+    10: 界
+
+Why are we missing index 8 and 9?
+
+: Here we see that something interesting happens, the indexes increase by one until 7, then jump to 10.
+: Range over strings iterates unicode runes, not bytes!
+: The indexes are the byte offsets of runes, Go uses UTF-8 strings, some runes are multiple bytes.
+
+## range over channels
+
+.code chan1.go /START OMIT/,/END OMIT/
+
+    40
+    41
+    42
+
+## Evolution of the range keyword in Go 1.22
+
+: The range keyword is powerful, very expressive, and can perform advanced operations like decoding UTF-8 or message passing with channels.
+: Go 1.22 should be released any time now, and brings a lot of new capabilities to range loops, let's take a look!
+
+## New variable in each loop iteration!
+
+.code goroutine.go /START OMIT/,/END OMIT/
+
+Until Go 1.21, the variable **v** was shared by goroutines spawned in each loop iteration:
+```
+CCC
+```
+
+: This was a possible output for the program, because the goroutines would run concurrently.
+: Reading the value would race with the loop, the value seen by each goroutine would be non-deterministic.
+: Basically undefined beahvior, which C++ loves, but we don't like that in Go, we want programs that we can rely on.
+
+Starting Go 1.22, each loop iteration uses a new variable:
+```
+BAC
+```
+
+: The order in which the values are printed is still undefined, because the goroutines run concurrently, but each goroutine captures a different value.
+: This was the cause of concurrency bugs that could be extremely difficult to track down.
+: I personally got bitten by this more than once, I'm sure many of you here have as well.
+
+## In Go, we don't break backward compatibility
+
+- We don't want to introduce bugs by implicitly changing the program behavior
+- Enabled per module using the go.mod file
+
+.code go.mod
+
+: Old code that doesn't get updated will continue to work the same as before, even if it is buggy.
+: New code that sets the Go module version to 1.22 or later gets the new behavior to prevent bugs from occuring in future developments.
+
