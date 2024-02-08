@@ -1,0 +1,445 @@
+# Go range-over-everything!
+8 Feb 2024
+Tags: go1.22, rangefunc, stealthrocket
+Summary: This presentation looks at the evolution of the range keyword in Go 1.22, and in particular the range function experiment.
+
+Achille Roussel
+CTO, Stealth Rocket
+achille@stealthrocket.tech
+https://stealthrocket.tech
+achille-roussel (Github)
+
+: I want to start with thanking you all for joining, a community is only alive when its members show up.
+: I also want to extend special thanks to Garett and Phillip for the opportunity to speak with you all today.
+: I'm tuning in today from San Francisco!
+
+## Speaker
+
+.link https://github.com/achille-roussel
+
+- Moved to **San Francisco** in 2011
+- Go developer since 2014
+- Go contributor since 2023 (**GOOS=wasip1**)
+- Open source projects: **ksuid, kafka-go, parquet-go, ...**
+- Career at **Twitch, Facebook, Segment, Twilio**
+- Co-Founded [**Stealth Rocket**](https://stealthrocket.tech) in 2023
+
+.image images/GO_PARIS.png 200 200
+
+: I'm originally from France, and move to SF in 2011.
+: I've been using Go for almost 10 years ago now.
+: Recently became a contributor to the Go project, working on the WASI preview 1 port that was released last year in Go 1.21.
+: I authored and maintain a couple of open source Go packages, some of the popular ones you may know about like ksuid, kafka-go, or parquet-go.
+: I've done my career in the Bay Area, oscilliating between startups and larger companies.
+: Last year I co-founded a company.
+: And bBefore we jump into today's topic, let me tell you a bit about what we do.
+
+## Stealth Rocket
+
+.link https://stealthrocket.tech
+
+Help software engineers develop reliable distributed systems:
+- Asynchronous/Background jobs
+- Event streaming pipelines
+- Workflow orchestration
+
+Simple programming model based on **durable coroutines**:
+
+.link https://github.com/stealthrocket/coroutine
+.image images/GopherSpaceCommunity.png 190 190
+
+: At Stealth Rocket, we develop a platform that helps software engineers like many of you build reliable distributed systems.
+: Typical use cases include subscription billing, integrations with public APIs, or sending requests to webhook URLs, etc...
+: We're a small but mighty team!
+: At the last Gophercon in San Diego we open sourced a Go project named coroutine.
+: It includes a source-to-source Go compiler that turns the program into a resumable state machine.
+: If you're a software engineer and you're developing those types of systems, get in touch!
+
+## Go 1.22 is here! 🎉
+
+.image images/go122release.png
+
+: Go 1.22 was released two days ago!
+: Everything we talk about today is part of this latest version.
+: In particular, we're going to talk about the range keyword.
+
+## Let's talk about the range keyword!
+
+## Topics we are discussing today
+
+- What does the range keyword do?
+- New capabilities!
+  - Different loop variable in each iteration
+  - Range over integers
+  - Range over functions (**GOEXPERIMENT=rangefunc**)
+
+.image images/CouchPotatoGopher.png _ 300
+
+: I know that sometimes we have friends joining us from other language communities so I'll do a very quick recap of what the range keyword does in Go.
+: I'll show you a lot of code examples to illustrate.
+: We'll cover three new features
+: How the semantics of range loops have changed in 1.22.
+: The new ability to range over integer values.
+: An finally, my personal favorite, the rangefunc experiment.
+: If you know Go already, don't tune out, we'll get into the interesting part very shortly.
+: But first, let's look back at what was supported until Go 1.21.
+
+## Range over slices
+
+one iteration variable
+
+.code examples/slice1.go /START OMIT/,/END OMIT/
+
+    0
+    1
+    2
+
+two iteration variables
+
+.code examples/slice2.go /START OMIT/,/END OMIT/
+
+    0: hello
+    1: world
+    2: !
+
+: In Go, we use the range keyword to loop over a sequence of values.
+: An there are two forms, producing either one or two variables per iteration.
+: For example, with slices or arrays, we either get the sequence of indexes, or the pair of index and their corresponding value.
+
+## Range over maps
+
+one iteration variable
+
+.code examples/map1.go /START OMIT/,/END OMIT/
+
+    one
+    two
+    three
+
+two iteration variables
+
+.code examples/map2.go /START OMIT/,/END OMIT/
+
+    one: 1
+    two: 2
+    three: 3
+
+: Similarly for maps, we can iterate over the keys, or we can loop through the pairs of keys and values.
+
+## Range over strings
+
+.code examples/string2.go /START OMIT/,/END OMIT/
+
+    0: H
+    1: e
+    2: l
+    3: l
+    4: o
+    5: ,
+    6:
+    7: 世
+    10: 界
+
+*"Where did index 8 and 9 go?"*
+
+.image images/GOPHER_SAFARI.png 150 150
+
+: We can also range over strings.
+: Here we see that it's getting a little special already.
+: The indexes jump from 7 to 10 when looping over the last two characters.
+: This is because Go strings are UTF-8 encoded, and the indexes are actually the byte offsets of the characters in the string.
+: The last characters are more than one byte, which explains the delta.
+
+## Range over channels
+
+.code examples/chan1.go /START OMIT/,/END OMIT/
+
+    40
+    41
+    42
+
+.image images/MovingGopher.png 150 150
+
+: Finally, Go having great language support for concurrency, we can also range over channels.
+: When doing so, we consume values from the channel until it is closed.
+: This makes for a very expressive syntax to construct concurrent programs.
+
+## Evolution of the range keyword in Go 1.22
+
+: The range keyword is powerful, very expressive.
+: But in Go 1.22 it's about to get even better.
+
+## Different variable in each loop iteration
+
+.code examples/goroutine.go /START OMIT/,/END OMIT/
+
+Until Go 1.21, the variable **v** was shared by goroutines spawned in each loop iteration
+```
+CCC
+```
+
+: Take this program as example.
+: In Go 1.21, the loop variable was shared by all iterations.
+: This meant he value could have changed between the time a closure was created in the loop, and the time it was read.
+: If we added goroutines, we would basically have undefined beahvior, because the goroutine would race with the loop.
+: But we don't like that in Go, we want programs that we can rely on.
+
+Starting Go 1.22, each loop iteration uses a different variable
+```
+BAC
+```
+
+: I personally got bitten by this more than once, I'm sure many of you here have as well.
+: In Go 1.22, our ordeal is over!
+: Each loop iterate gets a different variable.
+: Each closures created in the loop will see a different variable.
+: These are bug fixes we get for free by upgrading to 1.22, to me it's enough of a reason to get on the latest version!
+
+.image images/GOPHER_AVATARS.jpg 100 _
+
+## Range over integers
+
+Go 1.22 introduces the ability to range over integers
+- The loop variable starts at zero
+- It increments by one at each iteration
+
+.code examples/int.go /START OMIT/,/END OMIT/
+
+    0
+    1
+    2
+    3
+    4
+
+*Only supports **zero** or **one** iteration variable!*
+
+: Second feature, and this one is more focused on expressiveness, we can now range over interger values.
+: This is a very common pattern in programs, any time we want to repeat something some number of times.
+: One place where I have personally used this a lot is in benchmarks.
+
+## Range over integers
+
+- Very common use case in benchmark
+- Loop with counter runs the code multiple times
+
+.code examples/benchmark.go /START OLD OMIT/,/END OLD OMIT/
+
+- Ranging over integers simplifies the expression of benchmark loops
+
+.code examples/benchmark.go /START NEW OMIT/,/END NEW OMIT/
+
+: If you've ever done benchmark in Go before, you probably wrote code like this.
+: In Go 1.22, we can range over the N value.
+: As we can see, the code is a lot more concise.
+: However, there's a very subtle difference between these two forms that is important to be aware of.
+
+## Watch out for subtle differences!
+
+*"If the value used in the loop condition is mutated, the behavior differs from ranging over it."*
+
+.code examples/watchout.go /START 1.21 OMIT/,/END 1.21 OMIT/
+
+    0
+    1
+
+.image images/GOPHER_LAPTOP.png _ 200
+
+: In the classic loop form, the variables in the condition are evaluated on each loop iteration.
+: Which means that if the value changes, it can affect the number of iterations that the loop does.
+
+## Watch out for subtle differences!
+
+The value being ranged over is captured at the beginning of the loop
+
+.code examples/watchout.go /START 1.22 OMIT/,/END 1.22 OMIT/
+
+    0
+    1
+    2
+    3
+    4
+
+.image images/TEACHING_GOPHER.png _ 200
+
+: Whereas when ranging over an integer, the value is captured.
+: The number of iteration is determined at the beginning of the loop, it is unaffected by mutations made to the variable.
+: Besides this detail which shouldn't affect much of the code, my take is we should all start adopting range over integer because it makes our programs a lot more expressive.
+
+## GOEXPERIMENT=rangefunc
+
+: Now let's get into the juicy stuff!
+: Like the name says, this is still experimental, so some of the details may change until it is finalized.
+: But you can start using it today!
+
+## Enabling the rangefunc experiment
+
+    $ export GOEXPERIMENT=rangefunc
+    $ go build .
+
+.image images/GO_LEARN.png _ 400
+
+: Enabling it is very simple, as usual in Go, we just need to set the GOEXPERIMENT environment variable, and it applies to the entire toolchain.
+: I gotta say, it took me a bit of time to get acustomed to this construct.
+: But after working with it for a few weeks, I now understand how simple and powerful it can be.
+
+## Standard iterator model for Go!
+
+.code examples/rangefunc.go /START OMIT/,/END OMIT/
+
+    0
+    1
+    2
+    3
+    4
+
+💡 _Always check the value returned by the yield function!_
+
+: Range functions are basically a standard iterator model for Go.
+: Compiler support helps address many of the challenges that developers have had modeling iterators in the past.
+: Range over functions works on functions with specific signatures.
+: The iterator receives a yield function as argument, and calls that yield function to produce the values seen by the loop.
+: This feels very much like functional programming, functions in, functions out.
+
+## Range over functions with two loop variables
+
+.code examples/rangefunc2.go /START OMIT/,/END OMIT/
+
+    0: A
+    1: B
+    2: C
+    3: D
+    4: E
+
+: Just like there are two forms supported for slices, maps, etc...
+: Range over functions can have one or two loop variables.
+: The two variable form is often used to produce a value, or an error, which is a very common pattern in Go.
+: Why is having a standard model important?
+: It means we can create a lot more interoperability between Go packages.
+: Instead of having a slightly different iterator model, converge on one model and make the code immediately composable.
+
+## Iterators before range functions
+
+.code examples/sqlrows.go /START OMIT/,/END OMIT/
+.image images/Facepalm_Picard_Gopher.png _ 100
+
+: Take as an example the standard database/sql package.
+: It has a form of iterator with the sql.Rows type.
+: When you query a table, you get back an iterator of the list of rows.
+: But look at all the ceremony we had to do just to read the values.
+: We need to remember to close the rows or we would leak connections.
+: We have to move the iterator to the next position and extract the columns.
+: We must check if any error occured at the end.
+: There is a lot that can go wrong.
+: Once again, I have gotten these wrong a few times.
+: I remember how hard it was as a more junior engineer to wrap my head around all the steps that I needed to get right.
+: I wanted to experiment with how we could use range functions to improve expressiveness of this kind of code, so I put together a little package I called sqlrange.
+
+## sqlrange: range functions for database/sql
+
+.link https://github.com/achille-roussel/sqlrange
+.code examples/sqlrange.go /START OMIT/,/END OMIT/
+.image images/sqlrange.png _ 600
+
+: I am very pleased with what I could achieve.
+: It turned a complex and error prone piece of code into a one-liner.
+: I'm using the two loop variable form for error checking.
+: There is only one spot where errors need to be checked instead of 3 or 4.
+: It's impossible to forget to close the rows or check for errors because this is done automatically by the range function.
+
+## Automatic resource management in Go? 😱
+
+- **Defers** are called when the program exits the loop!
+- The caller knows nothing about the range function implementation
+- No explicit close, **no risks leaking resources**
+- Similar to destructors in C++/Rust
+
+.image images/GOPHER_MIC_DROP.png _ 250
+
+: Basicaly, this new construct brings automatic resource management to Go.
+: Because defers declared within the range function are called when the loop exits.
+: This is orchestrated by the compiler, the code that declares the loop does not need to be concerned with it.
+: If you've ever used languages like C++ or Rust, this behavior looks very close to the automation you can achieve with descructors.
+: This is truely ground breaking in my opinion, not only the code is more reusable, it also becomes a lot safer.
+
+## New standard package
+
+    package iter
+    
+    type Seq[V any] func(yield func(V) bool)
+    
+    type Seq2[K, V any] func(yield func(K, V) bool)
+    
+    func Pull[V any](seq Seq[V]) (next func() (V, bool), stop func()) { ... }
+    
+    func Pull2[K, V any](seq Seq2[K, V]) (next func() (K, V, bool), stop func()) { ... }
+
+- range functions: _push_
+- iter package: _pull_
+
+💡 _Pull is useful for composing two or more iterators!_
+
+.image images/Gopher_Band.png _ 300
+
+: The rangefunc experiment also introduces a new standard package named iter.
+: The iter package provides the ability to create pull-style iterators.
+: Push style is when the range function push the values to the caller by calling the yield function.
+: Pull style is when the caller drives progress by calling a function to pull the next value from the iterator.
+: A good rule of thumb is that we usually only need the pull style if we are turning multiple sequences into one.
+: For example, a common problem in distributed systems is merging sequences of ordered values.
+: It's always been a dream of mine to be able to write and optimize this algorithm once and for all in Go.
+: Now that range functions exist, it became a reality!
+
+## K-way merge with range functions
+
+.link https://github.com/achille-roussel/kway-go
+.code examples/kway.go /START OMIT/,/END OMIT/
+
+: To learn how to use the pull model, I wrote this open source package that implements the k-way merge algorithm.
+: The Merge function takes any number of ordered sequences and merges them into a single one.
+
+## K-way merge with range functions
+
+.code examples/kway.go /START LOOP OMIT/,/END OMIT/
+
+    0,1,1,2,2,3,3,4,
+
+.image images/kway.png _ 600
+
+: Here we see the power of this approach, because we can throw any sequence as input.
+: Regardless of whether the values from from a SQL table or an object on S3, we have a standard model to create composable code.
+
+## iter.Pull has a cost
+
+- Internal buffering helps amortize the cost of pulling values
+- Use `kway.MergeSlice` instead of `kway.Merge`
+
+.image images/mergeperf.png _ 300
+.link https://github.com/achille-roussel/kway-go/blob/main/README.md#performance
+
+: Something to be aware of as well, is the runtime cost of using pull iterators.
+: The implementation uses a new lightweight primitive called a coroutine in the Go runtime.
+: Even if it is a lot cheaper than a regular goroutine, it still has a higher cost than a simple range function that can be optimized by the compiler.
+: Usually, only package maintainers for high-performance stream processing would have to worry about this.
+: As usual, the best mitigation is batching.
+: We can introduce internal buffering to amortize the cost of context switch when pulling values.
+: Or even better, we can make iterators that produce slices instead of individual values to have end-to-end batching.
+: If you are interested in digging further into a performance analysis, I wrote one down in the kway-go repository, so please check it out later!
+
+## Recap
+
+Go 1.22 `range` keyword has new **super powers**:
+- Different loop variable in each iteration
+- Range over integers
+- Range over functions (**GOEXPERIMENT=rangefunc**)
+
+.image images/gopher_unicorn.png _ 500
+
+: To wrap up this presentation, I'm going to recap what we've covered today.
+: Go 1.22 greatly improves the capabilties of the range keyword.
+: We get bug fixes for free by having a different variable in each loop iteration.
+: We can now range over integers to make common code constructs a lot more concise.
+: And we can opt-in to the rangefunc experiment, which bring a standard iterator model to Go which is more expressive and allows us to write much safer code than what we were able to do before.
+: These slides are available on my github.
+: If you're interested in what we do at Stealth Rocket, don't hesitate to shoot me an email.
+: If there are any questions or comments, I think we can open up the floor for discussions!
+
