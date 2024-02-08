@@ -6,7 +6,7 @@ func main() {
 	go func() {
 		defer close(ch) // HL
 		for _, v := range []int{40, 41, 42} {
-			ch <- v
+			ch <- v // HL
 		}
 	}()
 	for v := range ch { // HL
