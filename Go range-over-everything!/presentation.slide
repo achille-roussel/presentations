@@ -31,14 +31,15 @@ achille-roussel (Github)
 : Recently became a contributor to the Go project, working on the WASI preview 1 port that was released last year in Go 1.21.
 : I authored and maintain a couple of open source Go packages, some of the popular ones you may know about like ksuid, kafka-go, or parquet-go.
 : I've done my career in the Bay Area, oscilliating between startups and larger companies.
+: If you want to get in touch, you can find me on the Gopher Slack, Twitter, LinkedIn, or over email.
 : Last year I co-founded a company.
-: And bBefore we jump into today's topic, let me tell you a bit about what we do.
+: And before we jump into today's topic, let me tell you a bit about what we do.
 
 ## Stealth Rocket
 
 .link https://stealthrocket.tech
 
-Help software engineers develop reliable distributed systems:
+Help software engineers develop reliable distributed systems like:
 - Asynchronous/Background jobs
 - Event streaming pipelines
 - Workflow orchestration
@@ -48,12 +49,11 @@ Simple programming model based on **durable coroutines**:
 .link https://github.com/stealthrocket/coroutine
 .image images/GopherSpaceCommunity.png 190 190
 
-: At Stealth Rocket, we develop a platform that helps software engineers like many of you build reliable distributed systems.
-: Typical use cases include subscription billing, integrations with public APIs, or sending requests to webhook URLs, etc...
-: We're a small but mighty team!
-: At the last Gophercon in San Diego we open sourced a Go project named coroutine.
+: At Stealth Rocket, we help software engineers like you and I build reliable distributed systems.
+: We offer a platform and SDK that injets fair scheduling, retries, and durability transparently into your applications.
+: If you want to learn more about how we do it, I recommend you check out this project we open-sourced at the last Gophercon in San Diego.
 : It includes a source-to-source Go compiler that turns the program into a resumable state machine.
-: If you're a software engineer and you're developing those types of systems, get in touch!
+: Please reach out, give us feedback, or let us know how we can help!
 
 ## Go 1.22 is here! 🎉
 
@@ -81,8 +81,6 @@ Simple programming model based on **durable coroutines**:
 : How the semantics of range loops have changed in 1.22.
 : The new ability to range over integer values.
 : An finally, my personal favorite, the rangefunc experiment.
-: If you know Go already, don't tune out, we'll get into the interesting part very shortly.
-: But first, let's look back at what was supported until Go 1.21.
 
 ## Range over slices
 
@@ -112,17 +110,17 @@ one iteration variable
 
 .code examples/map1.go /START OMIT/,/END OMIT/
 
+    three
     one
     two
-    three
 
 two iteration variables
 
 .code examples/map2.go /START OMIT/,/END OMIT/
 
     one: 1
-    two: 2
     three: 3
+    two: 2
 
 : Similarly for maps, we can iterate over the keys, or we can loop through the pairs of keys and values.
 
@@ -190,10 +188,10 @@ BAC
 ```
 
 : I personally got bitten by this more than once, I'm sure many of you here have as well.
-: In Go 1.22, our ordeal is over!
-: Each loop iterate gets a different variable.
-: Each closures created in the loop will see a different variable.
-: These are bug fixes we get for free by upgrading to 1.22, to me it's enough of a reason to get on the latest version!
+: Thankfully in Go 1.22, our pain is over!
+: Each loop iteration gets a different variable.
+: Each closures created in the loop will see the value of that variable at the time it was created.
+: By upgrading to 1.22, we get these bug fixes for free, you have nothing else to do, your code simply becomes more robust.
 
 .image images/GOPHER_AVATARS.jpg 100 _
 
@@ -229,9 +227,9 @@ Go 1.22 introduces the ability to range over integers
 .code examples/benchmark.go /START NEW OMIT/,/END NEW OMIT/
 
 : If you've ever done benchmark in Go before, you probably wrote code like this.
-: In Go 1.22, we can range over the N value.
-: As we can see, the code is a lot more concise.
-: However, there's a very subtle difference between these two forms that is important to be aware of.
+: In Go 1.22, we can range over the b.N value.
+: As we can see in the second snippet, the code is a lot more concise.
+: However, there's a very subtle difference between these two forms that I think is important to be aware of.
 
 ## Watch out for subtle differences!
 
@@ -267,7 +265,7 @@ The value being ranged over is captured at the beginning of the loop
 
 ## GOEXPERIMENT=rangefunc
 
-: Now let's get into the juicy stuff!
+: Now let's get into the juicy stuff! The rangefunc experiment!
 : Like the name says, this is still experimental, so some of the details may change until it is finalized.
 : But you can start using it today!
 
@@ -298,7 +296,7 @@ The value being ranged over is captured at the beginning of the loop
 : Compiler support helps address many of the challenges that developers have had modeling iterators in the past.
 : Range over functions works on functions with specific signatures.
 : The iterator receives a yield function as argument, and calls that yield function to produce the values seen by the loop.
-: This feels very much like functional programming, functions in, functions out.
+: I don't know about you, but this feels very much like functional programming to me!
 
 ## Range over functions with two loop variables
 
