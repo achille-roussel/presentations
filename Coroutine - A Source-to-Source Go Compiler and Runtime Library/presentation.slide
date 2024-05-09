@@ -1,0 +1,245 @@
+# Coroutine - A Source-to-Source Go Compiler and Runtime Library
+9 May 2024
+Tags: coroc, coroutine, durability, serializable, state-machine, compiler, dispatch.run
+Summary: This is a presentation about dispatchrun/coroutine, an open-source project containing a source-to-source Go compiler that rewrites programs into serializable state machines.
+
+Achille Roussel
+CTO, dispatch.run
+achille@stealthrocket.tech
+https://dispatch.run
+achille-roussel (Github)
+
+## Speaker
+
+.link https://github.com/achille-roussel
+
+- Moved to **San Francisco** in 2011
+- Go developer since 2014
+- Go contributor since 2023 (**GOOS=wasip1**)
+- Open source projects: **ksuid, kafka-go, parquet-go, wazero, ...**
+- Career at **Twitch, Facebook, Segment, Twilio**
+- Co-Founder since 2023, working on [**dispatch.run**](https://dispatch.run)
+
+.image images/GO_PARIS.png _ 150
+
+: I first want to start by thanking Stytch for hosting us today, I'm so stoked to see you all show up to share stories and learnings we all have from working with Go.
+: My name is Achille, I've used Go for about 10 years now.
+: I do a lot of open-source, some of you maybe have used a few projects that I've authored or maintained like the ones listed here.
+: I'm also contributing to the Go compiler and standard library.
+: I've worked on distributed systems pretty much my whole career, and last year I funded a company where we're working on a product called Dispatch, that I'll tell you more about later!
+
+## Creativity takes courage
+
+: A property of art is that it's not supposed to leave the audience indifferent, it makes you angry, or happy, confused... but it makes you feel something.
+: That's also a property of... being opinionated, so I hope my presentation today makes you feel a little bit like art.
+
+## Building server software in 2024
+
+- The era of simple stateless services **is over**
+- To solve modern problems, developers need to build **stateful systems**
+
+.image images/Unicorn_Gopher.png _ 300
+
+: I'm going to start with two statements:
+: The era of simple stateless services is over
+: To solve modern problems, developers need to build stateful systems
+: A consequence of this situation is that we also need better tools, because developers cannot absorb the growing demand for complexity alone.
+: Now some of you might be thinking "finally someone is saying what I've known for years!"
+: But let me share a bit more about the angle I'm coming from.
+
+## Taking a step back into the past
+
+: I used to work at Segment, and I'm seeing a few familiar faces from that time in the crowd, so if I'm saying anything that sounds off, please double-check with them.
+: One of the systems I used to work on was the core data delivery engine called Centrifuge, which you can think of as a hyper-scale processor, publishing JSON payloads to hundreds of HTTP endpoints on the internet.
+: And Murphy's law being what it is, things always go wrong, so we had to build a lot of reliability features in the system to handle the wild variety of issues that we would hit; think timeouts, servers going down, misconfigurations, or malicious actors.
+: Begin able to reliability retry failed operations, at scale, was a core technological challenge that we needed to solve.
+
+## Async JSON processing in numbers
+
+- 12 shards deployed
+- 15 servers per shard
+- 4 kafka brokers per shard
+- 2.5 GiB/s
+- 1M+ job/s
+- Integrations: HTTP, Cloud Events, Kafka, Kinesis, Lambda, ...
+- Features: batching, retries, state management, flow control, synchronization, ...
+
+.image images/MovingGopher.png _ 150
+
+: By many metrics, this system was a success.
+: I'm showcasing a few numbers to illustrate how the core engine really delivered a lot of features out of the box to developers.
+: This was a high performance, very cost efficient system that powered Segment through multiple years of product growth.
+: What has been really interesting to learn as well was how common the problems was in the industry.
+: Many companies have developed similar systems, going through the same pain points that we had.
+: However, despite its success, Centrifuge also had hard limitations.
+
+## Limitations
+
+- Static execution graph
+- High development cost to serve new use cases
+- Introspection, observability, etc...
+
+.image images/Facepalm_Gopher.png _ 300
+
+: The main one I want to talk about today relates to the way we used a static execution graph to represent the workflows.
+: You can think of it as a Domain Specific Languge to describe the execution steps, where each step can be retried independently on failure.
+: This is similar to what exists in solutions like AWS step functions for example.
+: DSLs simplify the problem space a lot, but they are very inflexible; each time developers needed a new feature, we'd have to build it in the core engine to support the use case.
+
+## What developers really want is...
+
+- The code is the sourth of truth
+- Express in code they are familiar with
+- Get features "out of the box"
+
+.image images/GO_BUG.png _ 300
+
+: If you stretch a DSL far enough, you quickly end up with a general purpose programming language.
+: While Centrifuge as a platform was very powerful, it lacked the right interface for developers.
+
+## 
+
+.image images/dispatch_logo_light.png 150 _
+
+: So we started Dispatch to create a general purpose solution to these problems, one that drastically simplifies that interface.
+: We think that developers shouldn't have to be distributed system experts to create reliable software, they should be able to write simple code that they are familiar with, and let the toolchain and platform take care of the rest.
+
+## github.com/dispatchrun/coroutine
+
+.image images/coroutine-readme.png _ 800
+
+: Now, we all came here to talk about Go, so let's dive into the real thing!
+: Our goal was to create a really minimal toolkit that would enable us to turn regular Go services into reliable distributed systems.
+: Last year at Gophercon, we launched this `coroutine` project, which attempts to solve the toolchain part of the problem for Go developers.
+: Before I go further let's define what a coroutine is, does anyone have a good definition?
+: A coroutine is a function that can be paused and resumed.
+: But in this project goes a bit further, and implements what we called durable coroutines.
+
+## Durable Coroutines
+
+*A durable coroutine is a function that can be paused an resumed on a different computer.*
+
+## Part 1 - the runtime library
+
+- Go package to implement stackful coroutines
+- Create coroutines & define yield points
+
+```
+c := coroutine.New[int, any](func() {
+    for i := 0; i < 3; i++ {
+        coroutine.Yield[int, any](i)
+    }
+})
+
+for c.Next() {
+    println(c.Recv())
+}
+```
+
+: The first part is the Go library that applications can use to create  coroutines and define yield points.
+: The package implements stackful coroutines.
+: Stackful: supports yielding from deeply nested stack frames.
+: Stackless: like the yield keyword in Python or Javascript.
+: Coroutines have values that they can receive from the outer scope, and values that they can yield back.
+
+## Part 2 - the compiler
+
+- Source-to-source compiler: **coroc**
+
+```
+$ coroc
+```
+
+- Integrates with the Go toolchain
+
+```
+ //go:generate coroc
+```
+
+- Generates files with the `durable` build tag
+
+```
+ //go:build durable
+```
+
+- No-op by default, but can be enabled with the build tag
+
+```
+go build -tags durable ...
+```
+
+: The second part of this project is a compiler that we named coroc.
+: It's a source-to-source compiler, which means it takes Go source files as input and produces other Go source files as output.
+: The generated files use the durable build tag, so by default nothing changes about the build.
+: But when compiling with the durable tag, the Go compiler selects the generated files, which then adds all the coroutine serialization code.
+: Developers can write the Go code they are familiar with, and the tool takes care of transformations after the code was written.
+
+## How does it work?
+
+- Call graph analysis to determine which parts of the code are coroutines
+- Rewrite functions that are coroutines into state machines
+- Serialize/deserialize the state referenced by the call stack
+
+: So how does it work?
+: coroc does a call graph analysis of the program to find all the functions that may be coroutines.
+: Functions are coroutines if they or their callees end up calling coroutine.Yield at some point.
+: Then coroc rewrites the function into a state machine.
+: And the library provides Marshal/Unmarshal methods to serialize and deserialize the coroutine state.
+
+.image images/GOPHER_ROCKS.png _ 300
+
+## This is crazy, it will never work!
+
+: So who here identifies with this statement?
+: Alright, should we do a demo?
+: Let's do a demo!
+
+## This is crazy, how can it work???
+
+## The hard parts - Go program serialization
+
+Serialization in a nutshell:
+
+- Values (int, string, etc...)
+- Graph of pointers
+- Closures 🫠
+
+: A lot of things were really hard to build in this project.
+: Serializing plain values is dead simple, we just write bytes and read them back to set the variable to its value.
+: But we also need to reconstruct references between values, which may contain cycles, or may contain pointers to global variables.
+: And don't get me started on closure serialization... which is supposed to be impossible in Go, well, we made it work!
+
+.image images/GOPHER_DAD.png _ 300
+
+## Can we use this to solve real-world problems?
+
+- No need for DSLs to express graphs of stateful workflows
+- Developers simply write their code as they used to
+- We can turn stateless RPC platforms like Lambda into stateful systems
+
+.image images/GOPHER_MIC_DROP_WITH_BACKGROUND.png _ 300
+
+: You can imagine we didn't spend all this time if we didn't think it would be possible to use this type of technology in production systems.
+: A primitive like durable coroutine allows execution to be paused and resumed on any instance of an application.
+: If one of the execution sees a temporary error, its state can be captured, put in object store, then rescheduled later on to retry the operation.
+: "Later" here can range from milliseconds to days, no resources are consumed while the operation is paused.
+: And because we build the primitive into a toolchain, we can do this with minimal assistance from the user.
+
+## It takes a village to change the world
+
+[dispatchrun/coroutine](https://github.com/dispatchrun/coroutine) is an open-source project!
+
+Ideas for contributions:
+
+- UX improvenents to better integrate with the Go toolchain
+- Help improve the language support
+- Sort out issues with the capture of global state
+- Scope optimizations to further minimize the state size
+- Use it and report issues that you run into!
+
+.image images/GOPHER_SHARE.png _ 300
+
+: `coroutine` is an open-source project, so we always welcome maintainers.
+: There is still a lot to build, I'm listing a few opportunities for contributions here, but if you've always wanted to work on a bleeding edge tech, this is your chance!
+
+## Questions?
