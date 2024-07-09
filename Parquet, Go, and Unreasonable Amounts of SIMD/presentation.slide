@@ -10,7 +10,7 @@ https://github.com/parquet-go/parquet-go
 achille-roussel (Github)
 
 : Hello, my name is Achille, I'm the co-founder of dispatch.run, and also an open-source contributor.
-: I've worked on projects like kafka-go, wazero, tinygo, and the Go compiler and standard library.
+: I've worked on a bunch of projects in the Go ecosystem.
 : Today I'm here to talk to you about another open-source project I maintain: parquet-go
 
 ## What is Parquet?
@@ -36,7 +36,7 @@ achille-roussel (Github)
 .image images/SCR-20240709-kbhm.png 400 _
 
 : Back when I was working at Segment in 2021, we had a lot of "big data" that we wanted to keep in object store and query efficiently.
-: Unfortunately all the existing open source packages for reading and writing parquet files were either unmaintained, crippled with bugs, didn't meet our performance requirements, or any combination of these.
+: Unfortunately all the existing open source packages for reading and writing parquet files were either unmaintained, crippled with bugs, but more importantly didn't meet our performance requirements.
 : So as one usually does, I thought to myself "how hard can it be to write a parquet library?"
 : Let me tell you, "It was really hard"
 
@@ -103,23 +103,10 @@ type RowWriter interface {
 : If you want to write high-performance software, the most important part to get right are your abstractions.
 : There are two core interfaces in the package which are the row reader and writer.
 : The key here is that we pass an array of rows as input or output buffer.
-: It causes the program to cross abstraction boundaries only once every N rows.
 : This amortizes the cost of abstractions, which means we can have high-performance code while also using high-level constructs.
 : Basically this design means that the program can spend most of its CPU time in the innermost parts of the code where it's actually doing work, instead of crossing abstraction bounaries over and over.
 
-## Going faster with SIMD
-
-- Scatter/Gather
-- Vectorized algorithms for encodings
-- SSE, AVX2, AVX-512
-
-.image images/gopher_unicorn.png 400 _
-
-: Now for the fun part. Since we got the right abstraction in place, we already had a pretty efficient code, but we could make it a lot faster!
-: Because parquet is a columnar format, we always work on arrays of data of the same type, which makes it possible to use SIMD instructions to parallelize most of the work.
-: Let's take a quick look at the algorithms we've implemented.
-
-## Run-Length Encoding / Binary Packing
+## Run-Length / Binary Packing
 
 .link https://arxiv.org/pdf/1209.2137
 
@@ -150,11 +137,10 @@ for i := 1; i < len(values); i++ {
 }
 ```
 
-: In multiple encodings, parquet usually stores deltas between values instead of the raw values, because the deltas are usually small and can be packed into fewer bits.
-: There's another paper that we implemented to vectorize these algorithms.
+: In multiple encodings, parquet usually stores deltas between values, because the deltas are usually small and can be packed into fewer bits.
+: There's another paper that we implemented to vectorize the encoding and decoding of deltas.
 : But in our case, the data comes from external files that may have been corrupted, we also need to do validation.
-: We improved the reference algorithm a bit tho to do both computation and validation at the same time.
-: In a vector register, we track a mask of all 32 bit values we see, and extract the most significant bits of each integer at the end of the loop. If any of the bits is one, it means one of the values was negative and therefore the result of the prefix sum is wrong because for our use case we should only have positive integers.
+: We improved the reference algorithm a bit tho to do both computation and validation at the same time and avoid thrashing the memory caches by doing multiple passes.
 
 ## Bytestream Split
 
@@ -168,9 +154,10 @@ Swap bytes of 32 bit and 64 bit floats to improve the compression ratio with Zst
 - VPERMB
 
 : This is another weird trick. If you have a column of floating point numbers, instead of storing them as a plain array, store all the first bytes first, then all the second bytes, all the third bytes, etc...
-: Then compress it, you get much better compression ratio when applying Zstd on top of it, due to how floats are laid out in memory.
-: This is an encoding called bytestream split in parquet, and it's also a perfect use case for GATHER/SCATTER instructions of AVX2/AVX-512, because they let us operate on non-contiguous area of memory.
-: We can split items from the input buffer into their destinations in the output buffer, this encoding is as fast as a memory copy.
+: Then compress it, you get much better compression ratios.
+: This is an encoding called bytestream split in parquet, and it's also a perfect use case for GATHER/SCATTER instructions, because they let us operate on non-contiguous areas of memory.
+: Take one float value, and you can scatter each of its bytes at the right position in the output buffer with a single instruction.
+: This encoding ends up being as fast as a simple memory copy.
 
 ## Bloom Filters
 
@@ -190,7 +177,7 @@ FilterCheck       8.80GB/s ± 3%  12.03GB/s ± 2%  +36.61%  (p=0.000 n=10+9)
 
 : Finally getting into some of the most advanced and unique parts of parquet-go.
 : The split-block bloom filters of the parquet spec map extremely well to parallel processing using AVX2, so obviously I had to vectorize all of that as well.
-: As you see parquet-go can generate bloom filters at almost 30GB/s, tho I think we could do better with AVX-512.
+: As you see parquet-go can generate bloom filters at almost 30GB/s.
 
 ## Parallel xxhash with AVX-512
 
@@ -212,9 +199,8 @@ MultiSum64Uint64/4KB       446M ± 0%      1391M ± 1%  +211.73%  (p=0.000 n=9+1
 MultiSum64Uint128/4KB      317M ± 0%       811M ± 1%  +155.69%  (p=0.000 n=10+10)
 ```
 
-: But for values to be added to bloom filters they must first be hashed, parquet uses the xxhash algorithm.
-: Since we're working on arrays of values, we also have vectorized algorithm that compute multiple hashes in a single pass.
-: As you see here, we reach 1 to 2 billion hash per second.
+: Values inserted in bloom filters must be hashed first, so the hashing algorithm can become a bottleneck in the generation of bloom filters.
+: We implemented a vectorized version of xxhash which computes multiple hashes in parallel and can hash 1 to 2 billion values per second.
 
 ## Contribute back to Go
 
