@@ -25,10 +25,9 @@ achille-roussel (Github)
   - Bulk operations
   - SIMD acceleration
 
-: I'll introduction to Bloom filters, explaining what they are and why they're valuable in the Parquet ecosystem.
-: Then I'll dive into the performance bottlenecks commonly seen in bloom filter implementations.
-: The core of the talk will focus on our optimization strategies, particularly our SIMD implementations in parquet-go.
-: I'll look at benchmark results on how we achieved almost 6 times better throughput.
+: I'll introduction to Bloom filters, explaining what they are and why they're valuable.
+: I'll explore the performance bottlenecks commonly seen in bloom filter implementations, think LevelDB and friends.
+: The core of the talk will focus on our optimization strategies, particularly our SIMD optimizations in parquet-go and how we achieved almost 6 times better throughput.
 
 ## Speaker
 
@@ -41,12 +40,10 @@ achille-roussel (Github)
 - Co-Founded [**Firetiger**](https://firetiger.com) in 2024
 
 : I'm originally from France, and move to SF in 2011.
-: I've been using Go for over 10 years.
-: I contributed to the 
+: I've been using Go for over 10 years, as a developer and contributor.
 : I authored and maintain a couple of open source Go packages, some of the popular ones you may know about like ksuid, kafka-go, or parquet-go.
 : I've done my career in the Bay Area, oscilliating between startups and larger companies.
-: Last year I co-founded a company.
-: And bBefore we jump into today's topic, let me tell you a bit about what we do.
+: Last year I co-founded a Firetiger.
 
 ## Firetiger
 
@@ -106,7 +103,7 @@ SELECT * FROM records WHERE attributes['key'] = 'value'
 
 ```
 
-: Bloom filters are probabilistic data structures that answer a simple question: "Is this element in this set?"
+: Bloom filters are probabilistic data structures that answer a simple question: "Is this element in this set?" → no / maybe
 : They're lossy by design - they compress values into a fixed set of bits.
 : The key property is that they can have false positives but never false negatives.
 : This means if a filter says "no," the element is definitely not present, but if it says "yes," the element might be present.
@@ -209,7 +206,6 @@ Bottlenecks in simple bloom filter implementations:
 : Computing these hashes becomes a significant part of the overall cost.
 : Each hash function adds computational overhead, especially for large values.
 : In our implementation, we focused on using fast hash functions and techniques to derive multiple hash values from a single hash computation.
-: This approach significantly reduces the hashing overhead without compromising on quality.
 
 ## Bloom Filters Performance Analysis: CPU cache misses
 
@@ -217,11 +213,9 @@ Bottlenecks in simple bloom filter implementations:
 
 : To understand why this is bad, consider that when a CPU writes to memory, it first reads a 64 bytes cache line, mutates it, and write it back.
 : This can be pipelines when memory writes touch the same cache line.
-: Batching is the only optimization.
 : When we set bits at random locations, we force the CPU to load different cache lines from main memory.
 : This is extremely slow compared to operations that work within already-cached memory.
 : The solution involves structuring our Bloom filter to maximize cache locality.
-: By working with memory in a more predictable way, we can dramatically improve performance.
 
 ## Bloom Filters in Parquet
 
@@ -240,15 +234,10 @@ func fasthash1x64(hashValue uint64, numBlocks int32) uint64 {
 
 .link https://github.com/apache/parquet-format/blob/master/BloomFilter.md
 
-: We can see that split-block filters is parquet have an optimial design:
-: - They use bitshift instead of modulo operations
-: - xxhash is a fast hashing algorithm
-: - spliting the filter into block ensures at most one cache miss when reading or writing a value
-: - 8 bits give close to 1% error rate, good balance of write throughput vs query latency
-: We get a lot out of the box just from the design, but there's more we can do!
 : The parquet format specifies a clever implementation called Split-Block filters.
 : They divide the filter into 32-byte chunks, addressing our cache locality concerns.
 : They use a two-step hashing approach: xxhash for quality, then a fast hash for distribution.
+: We get a lot out of the box just from the design, but there's more we can do!
 
 : Side track 1: two-step hashing in parquet uses xxhash and then an array of salt values that the hashed value is multiplied by.
 : To generate 8 bit positions in a block, we can simply perform 8 integer multiplications (fast and can be done in parallel with SIMD instructions).
@@ -399,8 +388,8 @@ SplitBlockFilter         897.9Mi ± 5%   6000.8Mi ± 2%  +568.28% (p=0.000 n=10)
 
 : In conclusion, our journey optimizing Bloom filters taught us several valuable lessons.
 : First, understanding hardware constraints - particularly CPU cache behavior - is essential to create high-performance programs.
-: Second, data-oriented design principles like our split-block approach create measurable improvements by working with hardware limitations rather than fighting against them.
+: Second, data-oriented design principles like our split-block approach create measurable improvements by leveraging hardware rather than fighting against them.
 : Third, SIMD instructions deliver dramatic acceleration, with 5-7x throughput improvements that make Bloom filters practical at our scale.
-: The real-world impact is significant: we can now perform faster queries across petabyte-scale data lakes by skipping irrelevant files.
+: The real-world impact is significant: we can now perform queries across petabyte-scale datalakes of telemetry.
 : We've made all this work available in the open-source parquet-go library, and I encourage you to explore it.
 : I'd be happy to answer any questions about the implementation, optimization techniques, or how you might apply similar approaches to your own projects.
