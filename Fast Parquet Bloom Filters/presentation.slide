@@ -1,4 +1,4 @@
-# Fast Parquet Bloom Filters
+# Parquet Bloom Filters: 570% Faster
 11 March 2025
 Tags: parquet-go, parquet, bloom, filters
 Summary: This presentation showcases the optimizations that were made to the bloom filter implementation in parquet-go
@@ -8,6 +8,27 @@ CTO, Firetiger
 achille@firetiger.com
 https://firetiger.com
 achille-roussel (Github)
+
+## Agenda
+
+- Bloom Filters
+  - What they are & why they matter
+  - Implementation basics in Parquet
+
+- Performance Bottlenecks
+  - Modulo operations
+  - Hashing overhead
+  - CPU cache misses
+
+- Optimizations & Benchmark Results
+  - Split-Block design
+  - Bulk operations
+  - SIMD acceleration
+
+: I'll introduction to Bloom filters, explaining what they are and why they're valuable in the Parquet ecosystem.
+: Then I'll dive into the performance bottlenecks commonly seen in bloom filter implementations.
+: The core of the talk will focus on our optimization strategies, particularly our SIMD implementations in parquet-go.
+: I'll look at benchmark results on how we achieved almost 6 times better throughput.
 
 ## Speaker
 
@@ -35,6 +56,10 @@ achille-roussel (Github)
 - Streaming OpenTelemetry to Apache Iceberg
 - Per-customer monitoring
 
+: Firetiger is a specialized data lake focused on telemetry data.
+: We ingests OpenTelemetry signals and stream them directly into Apache Iceberg tables.
+: With this data, we enable per-customer monitoring for SaaS businesses, along with solving for classic system operations.
+
 ## Apache Iceberg
 
 .link https://iceberg.apache.org
@@ -46,11 +71,21 @@ achille-roussel (Github)
 .link https://github.com/firetiger-oss/iceberg
 .link https://github.com/parquet-go/parquet-go
 
+: Apache Iceberg is an open table format for huge analytic datasets.
+: It uses the Parquet file format under the hood, which provides columnar storage benefits.
+: Iceberg traditionally exists in the Java ecosystem, but we've been working on a Go implementation that is based on parquet-go and includes all the performance optimizations that I'm going to discuss today.
+
 ## Challenges
 
 - High write throughput (1M+ row/s)
+- High cardinality (many unique values per column)
 - Most of the data is never read
 - Querying over large datasets (PB)
+
+: Typical challenges of telemetry data is very high write throughput, often on high cardinality data.
+: Telemetry also tend to be written a lot more than it is read, typically 95% of the data is left untouched.
+: When queries do happen, they need to look through petabytes of data efficiently.
+: Bloom filters are an effective tool to help in that regard, but generating them efficiently can be a challenge.
 
 ## What are Bloom Filters?
 
@@ -58,12 +93,24 @@ achille-roussel (Github)
 
 Lossy compression mechanism (reduce value to a fixed set of bits).
 
-Useful for point lookups:
+Useful for point lookups amd equality filters:
 ```
 
 SELECT * FROM records WHERE id = '070A8618-2199-4E24-9B29-01826EC533C9'
 
 ```
+
+```
+
+SELECT * FROM records WHERE attributes['key'] = 'value'
+
+```
+
+: Bloom filters are probabilistic data structures that answer a simple question: "Is this element in this set?"
+: They're lossy by design - they compress values into a fixed set of bits.
+: The key property is that they can have false positives but never false negatives.
+: This means if a filter says "no," the element is definitely not present, but if it says "yes," the element might be present.
+: They're particularly useful for queries with equality conditions, like looking up rows matching a unique identifier or a label.
 
 ## Why are Bloom Filters useful?
 
@@ -83,6 +130,8 @@ SELECT * FROM records WHERE id = '070A8618-2199-4E24-9B29-01826EC533C9'
 
 : Bloom Filters are useful to accelerate queries by reducing the amount of data that needs to be touched to find matching records.
 : They are memory efficient because they only store a fixed number of bits regardless of the size of the original value that was inserted in the filter.
+: The main trade off to consider is more bits per element means lower false positive rates.
+: For our applications, we typically aim for around 1% false positives, which represents a good balance between filter size and false positives.
 
 ## How are Bloom Filters implemented?
 
@@ -110,11 +159,23 @@ Check
 
 ```
 
+: The basic implementation of a Bloom filter is really simple.
+: To insert a value, we hash it, use modulo to fit within our filter size, then set the corresponding bit.
+: To check if a value exists, we perform the same hash calculation and check if the bit is set.
+: Then repeat with different hash functions to increase the accuracy of the filter.
+: But simple bloom filter implementations like this one have several shortcomings.
+
 ## How are Bloom Filters used?
 
 First test if the value probably exist in the file (~% chance of being wrong)
 
 Filter out all files that do no contain the value
+
+: In the context of Parquet and data lakes, Bloom filters are used to optimize file skipping.
+: When executing a query, we first check the Bloom filter to see if a value might exist in a file.
+: If the filter says "no," we can completely skip that file, avoiding expensive I/O.
+: If the filter says "yes," we still need to read the file, but there's a small chance (our false positive rate) that the value isn't actually there.
+: Overall, this approach dramatically reduces the amount of data that needs to be scanned for point queries.
 
 ## Bloom Filters Performance Analysis
 
@@ -123,42 +184,61 @@ Bottlenecks in simple bloom filter implementations:
 - Hashing
 - CPU cache misses
 
+: When we analyzed the performance of Bloom filters, we identify three main bottlenecks.
+: First, modulo operations are computationally expensive when used on hot code paths.
+: Hashing values multiple times is costly, particularly when we deal with variable size input (e.g., strings).
+: Random memory access patterns also defeat CPU cache strategies, making the filters extremely slow when they grow to large sizes.
+: These three factors combine to limit the performance of naive Bloom filter implementations.
+: Let's look at each one in more detail.
+
 ## Bloom Filters Performance Analysis: Modulo
 
-Expensive when performed on hot code paths
+.image assets/modulo-diagram.svg
+
+: Modulo operations are surprisingly expensive on modern CPUs, often requiring division instructions.
+: In a Bloom filter, modulo is used to map hash values to positions within the bit array.
+: When inserting millions of values per second, these modulo operations become a significant bottleneck.
+: Later, I'll see how we can replace modulo operations with faster bit manipulations.
+: This is especially important on hot code paths where every CPU cycle matters.
 
 ## Bloom Filters Performance Analysis: Hashing
 
-Hashing the value multiple times increases the baseline cost
+.image assets/hashing-diagram.svg
+
+: Traditional Bloom filters require multiple hash functions to achieve acceptable false positive rates.
+: Computing these hashes becomes a significant part of the overall cost.
+: Each hash function adds computational overhead, especially for large values.
+: In our implementation, we focused on using fast hash functions and techniques to derive multiple hash values from a single hash computation.
+: This approach significantly reduces the hashing overhead without compromising on quality.
 
 ## Bloom Filters Performance Analysis: CPU cache misses
 
-Setting bits at random locations in memory causes large number of CPU cache misses
+.image assets/cache-misses-diagram.svg
 
 : To understand why this is bad, consider that when a CPU writes to memory, it first reads a 64 bytes cache line, mutates it, and write it back.
 : This can be pipelines when memory writes touch the same cache line.
 : Batching is the only optimization.
+: When we set bits at random locations, we force the CPU to load different cache lines from main memory.
+: This is extremely slow compared to operations that work within already-cached memory.
+: The solution involves structuring our Bloom filter to maximize cache locality.
+: By working with memory in a more predictable way, we can dramatically improve performance.
 
 ## Bloom Filters in Parquet
 
 Split-Block Filters:
 - Split filter in 32 bytes chunks
-- Two-step hashing with xxhash and fast hash
+- Two-step hashing with xxhash
 - Set 8 bits in a 256 bit block
 
 ```
 
-func fasthash1x64(value uint64, scale int32) uint64 {
-	return ((value >> 32) * uint64(scale)) >> 32
+func fasthash1x64(hashValue uint64, numBlocks int32) uint64 {
+	return ((hashValue >> 32) * uint64(numBlocks)) >> 32
 }
 
 ```
 
-```
-goos: linux
-goarch: amd64
-cpu: AMD EPYC 9B14
-```
+.link https://github.com/apache/parquet-format/blob/master/BloomFilter.md
 
 : We can see that split-block filters is parquet have an optimial design:
 : - They use bitshift instead of modulo operations
@@ -166,11 +246,28 @@ cpu: AMD EPYC 9B14
 : - spliting the filter into block ensures at most one cache miss when reading or writing a value
 : - 8 bits give close to 1% error rate, good balance of write throughput vs query latency
 : We get a lot out of the box just from the design, but there's more we can do!
+: The parquet format specifies a clever implementation called Split-Block filters.
+: They divide the filter into 32-byte chunks, addressing our cache locality concerns.
+: They use a two-step hashing approach: xxhash for quality, then a fast hash for distribution.
 
-## Optimzing Parquet Bloom Filters: Bulk Operations
+: Side track 1: two-step hashing in parquet uses xxhash and then an array of salt values that the hashed value is multiplied by.
+: To generate 8 bit positions in a block, we can simply perform 8 integer multiplications (fast and can be done in parallel with SIMD instructions).
+
+: Side track 2: typically bloom filters are held in memory in query engines, but at very large scale it's not possible to do so.
+: Chunking the filter in blocks alos means that filters can be left on storage, and the query engine will suffer at most 1 I/O operation to read a block of the filter instead of N.
+: The same optimization that works for CPU caches applies to retrieving the filter data.
+
+## Optimizing Parquet Bloom Filters: Bulk Operations
 
 .link https://www.youtube.com/watch?v=rX0ItVEVjHc CppCon 2014: Mike Acton "Data-Oriented Design and C++"
 ---
+
+: Our first optimization approach was to implement bulk operations.
+: Rather than inserting values one by one, we process them in batches.
+: This data-oriented design approach, popularized by Mike Acton in his famous CppCon talk, focuses on how data flows through the system.
+: By processing data in batches, we can amortize overhead costs like function calls and setup.
+: More importantly, we can optimize memory access patterns to be more cache-friendly.
+: This approach laid the groundwork for our next optimization: SIMD instructions.
 
 ## Optimizing Parquet Bloom Filters: SIMD Insert / Check
 
@@ -199,6 +296,14 @@ geomean                 7.372Gi         15.48Gi       +110.00%
 .link https://github.com/parquet-go/parquet-go/blob/main/bloom/block_amd64.s
 .link https://github.com/parquet-go/parquet-go/blob/main/bloom/filter_amd64.s
 
+: SIMD (Single Instruction, Multiple Data) instructions allow us to process multiple values in parallel.
+: We implemented specialized assembly code for x86-64 processors to leverage these instructions.
+: The benchmarks show dramatic improvements across all operations.
+: Looking at FilterInsertBulk, we see an 84% reduction in time per operation.
+: In terms of throughput, we achieve a 525% improvement for bulk insertions.
+: The links point to our assembly implementations, which use AVX2 instructions for maximum performance.
+: This represents a significant investment in optimization, but the results speak for themselves.
+
 ## Optimizing Parquet Bloom Filters: SIMD XXHash
 
 Bulk xxhash implementations to compute multiple hash values in parallel
@@ -218,6 +323,13 @@ func MultiSum64Uint128(h []uint64, v [][16]byte) int
 ```
 
 .link https://github.com/parquet-go/parquet-go/blob/main/bloom/xxhash/sum64uint_amd64.s
+
+: We didn't stop at optimizing the filter operations - we also tackled the hashing bottleneck.
+: We implemented SIMD versions of the xxhash algorithm for different data types.
+: These functions compute multiple hash values in parallel using vector instructions.
+: We created specialized versions for different data types (uint8, uint16, etc.) to maximize performance.
+: These optimizations are critical because hashing is often the most expensive part of Bloom filter operations.
+: The assembly code is complex but worth the effort given the performance gains we achieve.
 
 ## Optimizing Parquet Bloom Filters: SIMD XXHash
 
@@ -243,12 +355,15 @@ MultiSum64Uint128/4KB          186.3M ± 4%   1573.2M ± 1%  +744.58% (p=0.000 n
 geomean                        387.1M         2.560G       +561.32%
 ```
 
-## Recap
+: The benchmark results for our SIMD xxhash implementation are even more impressive.
+: For uint8 values, we achieve a 582% throughput improvement.
+: For uint128 values, the improvement jumps to 744%.
+: In terms of hash operations per second, we go from hundreds of millions to billions.
+: These improvements translate directly to higher throughput when inserting values into Bloom filters.
+: The consistent performance across different data types shows the robustness of our approach.
+: These optimizations are particularly important for processing string columns, which are common in our datasets.
 
-To create high performance Bloom Filters:
-- Undersand hardware
-- Data-oriented deisng
-- Leverage SIMD instructions
+## Overal Perfomance Improvements
 
 ```
 
@@ -265,3 +380,27 @@ SplitBlockFilter          8.497µ ± 6%   1.271µ ± 2%  -85.04% (p=0.000 n=10)
 SplitBlockFilter         897.9Mi ± 5%   6000.8Mi ± 2%  +568.28% (p=0.000 n=10)
 
 ```
+
+## Conclusion: Optimizing for Real-World Performance
+
+- **Understand the hardware**
+  - CPU cache behavior is crucial
+  - Memory access patterns matter
+
+- **Data-oriented design wins**
+  - Split-block approach minimizes cache misses
+  - Batch operations amortize overhead
+
+- **SIMD acceleration to go further**
+  - 5-7x throughput improvement
+  - Makes Bloom filters practical at hyper-scale
+
+**Next Steps:** Contribute! [github.com/parquet-go/parquet-go](https://github.com/parquet-go/parquet-go)
+
+: In conclusion, our journey optimizing Bloom filters taught us several valuable lessons.
+: First, understanding hardware constraints - particularly CPU cache behavior - is essential to create high-performance programs.
+: Second, data-oriented design principles like our split-block approach create measurable improvements by working with hardware limitations rather than fighting against them.
+: Third, SIMD instructions deliver dramatic acceleration, with 5-7x throughput improvements that make Bloom filters practical at our scale.
+: The real-world impact is significant: we can now perform faster queries across petabyte-scale data lakes by skipping irrelevant files.
+: We've made all this work available in the open-source parquet-go library, and I encourage you to explore it.
+: I'd be happy to answer any questions about the implementation, optimization techniques, or how you might apply similar approaches to your own projects.
