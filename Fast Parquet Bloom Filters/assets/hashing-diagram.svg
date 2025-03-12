@@ -1,0 +1,75 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 320">
+  <!-- Background -->
+  <rect width="600" height="320" fill="#f8f9fa" rx="10" ry="10"/>
+  
+  <!-- Title -->
+  <text x="300" y="40" font-family="Arial, sans-serif" font-size="22" font-weight="bold" text-anchor="middle" fill="#1a1a1a">Multiple Hashing: Performance Bottleneck</text>
+  
+  <!-- Traditional Bloom Filter Approach -->
+  <g transform="translate(50, 90)">
+    <!-- Input value -->
+    <rect x="0" y="0" width="100" height="40" rx="5" ry="5" fill="#3498db" fill-opacity="0.8"/>
+    <text x="50" y="25" font-family="Arial, sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="white">Input Value</text>
+    
+    <!-- Hash functions -->
+    <rect x="150" y="-30" width="120" height="30" rx="5" ry="5" fill="#e74c3c" fill-opacity="0.8"/>
+    <text x="210" y="-10" font-family="Arial, sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="white">Hash Function 1</text>
+    
+    <rect x="150" y="20" width="120" height="30" rx="5" ry="5" fill="#e74c3c" fill-opacity="0.8"/>
+    <text x="210" y="40" font-family="Arial, sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="white">Hash Function 2</text>
+    
+    <rect x="150" y="70" width="120" height="30" rx="5" ry="5" fill="#e74c3c" fill-opacity="0.8"/>
+    <text x="210" y="90" font-family="Arial, sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="white">Hash Function 3</text>
+    
+    <!-- Output hash values -->
+    <rect x="320" y="-30" width="80" height="30" rx="5" ry="5" fill="#27ae60" fill-opacity="0.8"/>
+    <text x="360" y="-10" font-family="Arial, sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="white">Hash 1</text>
+    
+    <rect x="320" y="20" width="80" height="30" rx="5" ry="5" fill="#27ae60" fill-opacity="0.8"/>
+    <text x="360" y="40" font-family="Arial, sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="white">Hash 2</text>
+    
+    <rect x="320" y="70" width="80" height="30" rx="5" ry="5" fill="#27ae60" fill-opacity="0.8"/>
+    <text x="360" y="90" font-family="Arial, sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="white">Hash 3</text>
+    
+    <!-- Bloom filter representation -->
+    <rect x="450" y="10" width="80" height="50" rx="5" ry="5" fill="#9b59b6" fill-opacity="0.8"/>
+    <text x="490" y="40" font-family="Arial, sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="white">Bit Array</text>
+    
+    <!-- Arrows -->
+    <line x1="100" y1="15" x2="140" y2="-15" stroke="#1a1a1a" stroke-width="2"/>
+    <polygon points="140,-15 133,-12 136,-5" fill="#1a1a1a"/>
+    
+    <line x1="100" y1="20" x2="140" y2="35" stroke="#1a1a1a" stroke-width="2"/>
+    <polygon points="140,35 133,32 136,39" fill="#1a1a1a"/>
+    
+    <line x1="100" y1="25" x2="140" y2="85" stroke="#1a1a1a" stroke-width="2"/>
+    <polygon points="140,85 133,82 136,89" fill="#1a1a1a"/>
+    
+    <line x1="270" y1="-15" x2="310" y2="-15" stroke="#1a1a1a" stroke-width="2"/>
+    <polygon points="310,-15 303,-19 303,-11" fill="#1a1a1a"/>
+    
+    <line x1="270" y1="35" x2="310" y2="35" stroke="#1a1a1a" stroke-width="2"/>
+    <polygon points="310,35 303,31 303,39" fill="#1a1a1a"/>
+    
+    <line x1="270" y1="85" x2="310" y2="85" stroke="#1a1a1a" stroke-width="2"/>
+    <polygon points="310,85 303,81 303,89" fill="#1a1a1a"/>
+    
+    <line x1="400" y1="-15" x2="440" y2="20" stroke="#1a1a1a" stroke-width="2"/>
+    <polygon points="440,20 433,17 436,24" fill="#1a1a1a"/>
+    
+    <line x1="400" y1="35" x2="440" y2="35" stroke="#1a1a1a" stroke-width="2"/>
+    <polygon points="440,35 433,31 433,39" fill="#1a1a1a"/>
+    
+    <line x1="400" y1="85" x2="440" y2="50" stroke="#1a1a1a" stroke-width="2"/>
+    <polygon points="440,50 433,47 436,54" fill="#1a1a1a"/>
+  </g>
+  
+  <!-- Performance Statistics -->
+  <g transform="translate(120, 220)">
+    <rect x="0" y="0" width="360" height="80" rx="5" ry="5" fill="#f39c12" fill-opacity="0.1" stroke="#f39c12" stroke-width="2"/>
+    
+    <text x="180" y="25" font-family="Arial, sans-serif" font-size="16" font-weight="bold" text-anchor="middle" fill="#1a1a1a">Performance Impact:</text>
+    <text x="20" y="50" font-family="Arial, sans-serif" font-size="14" text-anchor="start" fill="#1a1a1a">• Each hash function adds computational overhead</text>
+    <text x="20" y="75" font-family="Arial, sans-serif" font-size="14" text-anchor="start" fill="#1a1a1a">• K hash functions = K times the computation cost</text>
+  </g>
+</svg>

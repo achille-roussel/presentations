@@ -1,0 +1,122 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 350">
+  <!-- Background -->
+  <rect width="600" height="350" fill="#f8f9fa" rx="10" ry="10"/>
+  
+  <!-- Title -->
+  <text x="300" y="30" font-family="Arial, sans-serif" font-size="22" font-weight="bold" text-anchor="middle" fill="#1a1a1a">How Bloom Filters Work</text>
+  
+  <!-- Input Value -->
+  <g transform="translate(50, 80)">
+    <rect x="0" y="0" width="120" height="40" rx="5" ry="5" fill="#3498db" fill-opacity="0.9"/>
+    <text x="60" y="25" font-family="Arial, sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="white">UUID-1234</text>
+  </g>
+  
+  <!-- Hash Functions -->
+  <g transform="translate(230, 80)">
+    <rect x="0" y="-15" width="100" height="30" rx="15" ry="15" fill="#9b59b6" fill-opacity="0.9"/>
+    <text x="50" y="5" font-family="Arial, sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="white">Hash 1</text>
+    
+    <rect x="0" y="25" width="100" height="30" rx="15" ry="15" fill="#9b59b6" fill-opacity="0.9"/>
+    <text x="50" y="45" font-family="Arial, sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="white">Hash 2</text>
+    
+    <rect x="0" y="65" width="100" height="30" rx="15" ry="15" fill="#9b59b6" fill-opacity="0.9"/>
+    <text x="50" y="85" font-family="Arial, sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="white">Hash 3</text>
+  </g>
+  
+  <!-- Bit Array -->
+  <g transform="translate(80, 180)">
+    <!-- Bit array background -->
+    <rect x="0" y="0" width="440" height="50" rx="5" ry="5" fill="#bdc3c7" fill-opacity="0.3" stroke="#7f8c8d" stroke-width="1"/>
+    
+    <!-- Bit cells -->
+    <g>
+      <rect x="0" y="0" width="40" height="50" fill="#ecf0f1" stroke="#7f8c8d" stroke-width="1"/>
+      <text x="20" y="30" font-family="Arial, sans-serif" font-size="12" text-anchor="middle" fill="#1a1a1a">0</text>
+    </g>
+    <g>
+      <rect x="40" y="0" width="40" height="50" fill="#ecf0f1" stroke="#7f8c8d" stroke-width="1"/>
+      <text x="60" y="30" font-family="Arial, sans-serif" font-size="12" text-anchor="middle" fill="#1a1a1a">0</text>
+    </g>
+    <g>
+      <rect x="80" y="0" width="40" height="50" fill="#27ae60" stroke="#7f8c8d" stroke-width="1"/>
+      <text x="100" y="30" font-family="Arial, sans-serif" font-size="12" text-anchor="middle" fill="white">1</text>
+    </g>
+    <g>
+      <rect x="120" y="0" width="40" height="50" fill="#ecf0f1" stroke="#7f8c8d" stroke-width="1"/>
+      <text x="140" y="30" font-family="Arial, sans-serif" font-size="12" text-anchor="middle" fill="#1a1a1a">0</text>
+    </g>
+    <g>
+      <rect x="160" y="0" width="40" height="50" fill="#ecf0f1" stroke="#7f8c8d" stroke-width="1"/>
+      <text x="180" y="30" font-family="Arial, sans-serif" font-size="12" text-anchor="middle" fill="#1a1a1a">0</text>
+    </g>
+    <g>
+      <rect x="200" y="0" width="40" height="50" fill="#27ae60" stroke="#7f8c8d" stroke-width="1"/>
+      <text x="220" y="30" font-family="Arial, sans-serif" font-size="12" text-anchor="middle" fill="white">1</text>
+    </g>
+    <g>
+      <rect x="240" y="0" width="40" height="50" fill="#ecf0f1" stroke="#7f8c8d" stroke-width="1"/>
+      <text x="260" y="30" font-family="Arial, sans-serif" font-size="12" text-anchor="middle" fill="#1a1a1a">0</text>
+    </g>
+    <g>
+      <rect x="280" y="0" width="40" height="50" fill="#ecf0f1" stroke="#7f8c8d" stroke-width="1"/>
+      <text x="300" y="30" font-family="Arial, sans-serif" font-size="12" text-anchor="middle" fill="#1a1a1a">0</text>
+    </g>
+    <g>
+      <rect x="320" y="0" width="40" height="50" fill="#27ae60" stroke="#7f8c8d" stroke-width="1"/>
+      <text x="340" y="30" font-family="Arial, sans-serif" font-size="12" text-anchor="middle" fill="white">1</text>
+    </g>
+    <g>
+      <rect x="360" y="0" width="40" height="50" fill="#ecf0f1" stroke="#7f8c8d" stroke-width="1"/>
+      <text x="380" y="30" font-family="Arial, sans-serif" font-size="12" text-anchor="middle" fill="#1a1a1a">0</text>
+    </g>
+    <g>
+      <rect x="400" y="0" width="40" height="50" fill="#ecf0f1" stroke="#7f8c8d" stroke-width="1"/>
+      <text x="420" y="30" font-family="Arial, sans-serif" font-size="12" text-anchor="middle" fill="#1a1a1a">0</text>
+    </g>
+    
+    <!-- Positions -->
+    <text x="20" y="70" font-family="Arial, sans-serif" font-size="12" text-anchor="middle" fill="#1a1a1a">0</text>
+    <text x="60" y="70" font-family="Arial, sans-serif" font-size="12" text-anchor="middle" fill="#1a1a1a">1</text>
+    <text x="100" y="70" font-family="Arial, sans-serif" font-size="12" text-anchor="middle" fill="#1a1a1a">2</text>
+    <text x="140" y="70" font-family="Arial, sans-serif" font-size="12" text-anchor="middle" fill="#1a1a1a">3</text>
+    <text x="180" y="70" font-family="Arial, sans-serif" font-size="12" text-anchor="middle" fill="#1a1a1a">4</text>
+    <text x="220" y="70" font-family="Arial, sans-serif" font-size="12" text-anchor="middle" fill="#1a1a1a">5</text>
+    <text x="260" y="70" font-family="Arial, sans-serif" font-size="12" text-anchor="middle" fill="#1a1a1a">6</text>
+    <text x="300" y="70" font-family="Arial, sans-serif" font-size="12" text-anchor="middle" fill="#1a1a1a">7</text>
+    <text x="340" y="70" font-family="Arial, sans-serif" font-size="12" text-anchor="middle" fill="#1a1a1a">8</text>
+    <text x="380" y="70" font-family="Arial, sans-serif" font-size="12" text-anchor="middle" fill="#1a1a1a">9</text>
+    <text x="420" y="70" font-family="Arial, sans-serif" font-size="12" text-anchor="middle" fill="#1a1a1a">10</text>
+    
+    <!-- Title -->
+    <text x="220" y="-15" font-family="Arial, sans-serif" font-size="16" font-weight="bold" text-anchor="middle" fill="#1a1a1a">Bloom Filter Bit Array</text>
+  </g>
+  
+  <!-- Arrows from input to hash functions -->
+  <line x1="170" y1="100" x2="230" y2="80" stroke="#1a1a1a" stroke-width="2"/>
+  <polygon points="230,80 223,77 226,84" fill="#1a1a1a"/>
+  
+  <line x1="170" y1="100" x2="230" y2="100" stroke="#1a1a1a" stroke-width="2"/>
+  <polygon points="230,100 223,96 223,104" fill="#1a1a1a"/>
+  
+  <line x1="170" y1="100" x2="230" y2="130" stroke="#1a1a1a" stroke-width="2"/>
+  <polygon points="230,130 223,127 226,134" fill="#1a1a1a"/>
+  
+  <!-- Arrows from hash functions to bit positions -->
+  <line x1="280" y1="80" x2="180" y2="180" stroke="#1a1a1a" stroke-width="2" stroke-dasharray="5,5"/>
+  <polygon points="180,180 175,173 185,176" fill="#1a1a1a"/>
+  
+  <line x1="280" y1="100" x2="300" y2="180" stroke="#1a1a1a" stroke-width="2" stroke-dasharray="5,5"/>
+  <polygon points="300,180 295,173 305,176" fill="#1a1a1a"/>
+  
+  <line x1="280" y1="130" x2="420" y2="180" stroke="#1a1a1a" stroke-width="2" stroke-dasharray="5,5"/>
+  <polygon points="420,180 415,173 425,176" fill="#1a1a1a"/>
+  
+  <!-- Explanation -->
+  <g transform="translate(150, 260)">
+    <rect x="0" y="0" width="300" height="70" rx="5" ry="5" fill="#f39c12" fill-opacity="0.1" stroke="#f39c12" stroke-width="2"/>
+    
+    <text x="150" y="20" font-family="Arial, sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#1a1a1a">To check if an item exists:</text>
+    <text x="150" y="45" font-family="Arial, sans-serif" font-size="14" text-anchor="middle" fill="#1a1a1a">All bits must be set to 1</text>
+    <text x="150" y="65" font-family="Arial, sans-serif" font-size="14" text-anchor="middle" fill="#1a1a1a">If ANY bit is 0, item is definitely NOT in the set</text>
+  </g>
+</svg>
