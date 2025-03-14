@@ -1,2 +1,6 @@
 # presentations
-List of presentations that I gave
+
+
+```
+present -notes . 2> /dev/null &
+```
