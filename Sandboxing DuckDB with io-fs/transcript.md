@@ -79,27 +79,30 @@ that's fine. For DuckDB, using CGO is simply the right call today.
 
 So, how are we using DuckDB?
 
-Our agents verify changes that engineers ship to production, they do this by
-emitting tool calls to query telemetry like logs, metrics, traces... and agents
-are really good at generating SQL: give a model a schema and a question, it
-writes the query. So SQL became the interface between our agents and our
-customers' telemetry, and we needed an engine that could execute arbitrary SQL
-against object storage, embedded in our own infrastructure. The data itself
-lives in Apache Iceberg tables — think of Iceberg as a way to lay out Parquet
-files on an object store so they behave like logical tables, and that's all we
-need to know about it for this talk.
+Our agents verify changes that engineers ship to production. To do that, they
+query telemetry: logs, metrics, traces. And agents are really good at
+generating SQL — give a model a schema and a question, it writes the query — so
+SQL is the interface, and every one of those queries lands on a service that
+looks like this.
 
-That's exactly what DuckDB is great at. But notice how we're using it: as a
-query engine, and nothing else. We store nothing in DuckDB, the data lives in
-the object store. This is something I love about DuckDB, it's composable, you
-pick the pieces you need. Our Go application is an RPC service, it handles
-authentication, configuration, instrumentation, all the things a service does.
-DuckDB sits inside it with one job: execute the query, return the results.
+[DIAGRAM: query path through the system — agent tool call → Go RPC service:
+authentication → storage resolution → embedded query engine (DuckDB via CGO)
+→ object store holding Iceberg tables (Parquet files on S3/GCS); results
+streaming back to the agent as Arrow records]
 
-[DIAGRAM: RPC service architecture — incoming request flows through
-authentication, configuration, and instrumentation layers in the Go
-application; DuckDB sits embedded at the center as the query engine; data
-sources (object storage) on the right]
+The entry point is a Go RPC service. The handler authenticates the caller,
+resolves which buckets this tenant can read, sets deadlines and
+instrumentation, then hands the SQL to the query engine: DuckDB, embedded in
+the process through CGO. The data is not in DuckDB. It lives in object storage,
+as Parquet files organized into Apache Iceberg tables — and all you need to
+know about Iceberg today is that it makes a pile of Parquet files behave like
+a logical table with a schema. DuckDB scans those files, executes the query,
+and streams the results back.
+
+One design decision on this slide matters for the rest of the talk: DuckDB is
+only the execution layer. Who runs the query, against what data, with which
+credentials, under what limits — all of that is decided in Go, before DuckDB
+sees a single byte.
 
 Alright. So we embedded a C++ query engine in a Go service. What could possibly
 go wrong?
