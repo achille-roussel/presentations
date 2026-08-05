@@ -92,25 +92,6 @@ authentication, configuration, and instrumentation layers in the Go
 application; DuckDB sits embedded at the center as the query engine; data
 sources (object storage) on the right]
 
-One last practical thing, because people always ask: how does the C++ get into
-the Go binary? One Dockerfile. pixi installs a pre-built libduckdb, and we link
-against it dynamically: one environment variable, one build tag, done. Builds
-stay fast and deterministic, and I never compile C++ inside a Go build.
-
-```dockerfile
-FROM ghcr.io/prefix-dev/pixi:latest AS pixi
-WORKDIR /src
-COPY pixi.toml pixi.lock .
-RUN pixi install --locked
-
-FROM golang:1.25 AS build
-WORKDIR /src
-COPY --from=pixi /src/.pixi .pixi
-COPY . .
-ENV CGO_LDFLAGS="-L/src/.pixi/envs/default/lib -lduckdb"
-RUN go build -tags=duckdb_use_lib
-```
-
 Alright. So we embedded a C++ query engine in a Go service. What could possibly
 go wrong?
 
@@ -130,8 +111,40 @@ can be written in Go, and that's fine. For DuckDB, CGO is simply the right
 call.
 
 Closing the parenthesis. Because even when CGO is the right call, you inherit a
-very specific set of problems. And the root of all of them is this: you end up
-with two I/O stacks in one binary.
+very specific set of problems.
+
+The first one hits before the program even runs: linking. Out of the box, you
+have two options, and neither is great. Static linking means compiling a very
+large C++ project inside every Go build, there go your build times. Dynamic
+linking keeps builds fast, but now your binary depends on whatever libduckdb is
+installed on the machine that runs it, and "unpredictable" is not a word I want
+anywhere near production.
+
+Here's how we solve it: a Docker image makes dynamic linking deterministic.
+
+```dockerfile
+FROM ghcr.io/prefix-dev/pixi:latest AS pixi
+WORKDIR /src
+COPY pixi.toml pixi.lock .
+RUN pixi install --locked
+
+FROM golang:1.25 AS build
+WORKDIR /src
+COPY --from=pixi /src/.pixi .pixi
+COPY . .
+ENV CGO_LDFLAGS="-L/src/.pixi/envs/default/lib -lduckdb"
+RUN go build -tags=duckdb_use_lib
+```
+
+pixi installs a pre-built libduckdb, pinned by its lock file, in its own image
+layer. The Go build links against it dynamically: one environment variable, one
+build tag. And Docker layer caching does the rest: when the Go code changes,
+the DuckDB layer is reused, not reinstalled. Builds stay fast, and every image
+ships the exact same libduckdb.
+
+That takes care of the build. The runtime problems are the interesting ones,
+and the root of all of them is this: you end up with two I/O stacks in one
+binary.
 
 [DIAGRAM: two I/O stacks side by side in one process — left: Go runtime with
 goroutines, scheduler, netpoller, net/http, AWS SDK; right: DuckDB C++ stack
