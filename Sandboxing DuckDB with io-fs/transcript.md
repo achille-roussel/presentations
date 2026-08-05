@@ -68,6 +68,21 @@ definitely not the kind of things we want to rewrite. It is an extremely
 powerful piece of software, and it's free, and it's open-source. But it's
 written in C++!
 
+Let me open a parenthesis on CGO right away, because I can hear some of you
+thinking it.
+
+In the Go ecosystem, we have a strong tendency to rewrite everything in Go. And
+I'm as guilty of this as anyone, I literally rewrote Parquet in Go, there's a
+whole talk about it. That used to be a bold move. And nowadays, with LLMs
+writing a lot of the code, rewriting has never been cheaper. The bar for
+"should we just rewrite this in Go" has genuinely moved.
+
+But it hasn't moved infinitely. DuckDB is decades of query optimization
+research, thousands of contributors, an enormous test surface — a level of
+maturity you do not regenerate with a prompt. Not every great piece of software
+can be written in Go, and that's fine. For DuckDB, CGO is simply the right
+call. Closing the parenthesis.
+
 So, how are we using DuckDB?
 
 Our agents verify changes that engineers ship to production, they do this by
@@ -95,23 +110,7 @@ sources (object storage) on the right]
 Alright. So we embedded a C++ query engine in a Go service. What could possibly
 go wrong?
 
-Let me open a parenthesis on CGO first, because I can hear some of you thinking
-it.
-
-In the Go ecosystem, we have a strong tendency to rewrite everything in Go. And
-I'm as guilty of this as anyone, I literally rewrote Parquet in Go, there's a
-whole talk about it. That used to be a bold move. And nowadays, with LLMs
-writing a lot of the code, rewriting has never been cheaper. The bar for
-"should we just rewrite this in Go" has genuinely moved.
-
-But it hasn't moved infinitely. DuckDB is decades of query optimization
-research, thousands of contributors, an enormous test surface — a level of
-maturity you do not regenerate with a prompt. Not every great piece of software
-can be written in Go, and that's fine. For DuckDB, CGO is simply the right
-call.
-
-Closing the parenthesis. Because even when CGO is the right call, you inherit a
-very specific set of problems.
+Even when CGO is the right call, you inherit a very specific set of problems.
 
 The first one hits before the program even runs: linking. Out of the box, you
 have two options, and neither is great. Static linking means compiling a very
