@@ -35,13 +35,10 @@ use case of integrating DuckDB in Go applications.
 
 Let's start with DuckDB.
 
-DuckDB is an embedded SQL database optimized for analytics workloads. The way I
-like to describe it is: it's SQLite, but for analytics. Where SQLite stores
-rows and is optimized for transactional workloads, DuckDB is columnar,
-vectorized, and optimized for scanning and aggregating large amounts of data.
-It runs in your process, there's no server, no cluster, no operations. And it's
-a real database: full SQL support, inserts, updates, transactions, the whole
-thing.
+DuckDB is an embedded SQL database optimized for analytics workloads: columnar,
+vectorized, built for scanning and aggregating large amounts of data. It runs
+in your process, there's no server, no cluster, no operations. And it's a real
+database: full SQL support, inserts, updates, transactions, the whole thing.
 
 But the part I find the most powerful is not the database part at all: DuckDB
 can query almost anything. Point it at a CSV file and select from it. Point it
