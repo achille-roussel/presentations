@@ -46,11 +46,11 @@ at JSON. Point it at Parquet files and it will read the metadata, use the
 column statistics, and only fetch the pages it needs.
 
 ```sql
-SELECT * FROM read_csv('records.csv');
+SELECT * FROM 'records.csv';
 
-SELECT * FROM read_json('events.json');
+SELECT * FROM 'events.json';
 
-SELECT * FROM read_parquet('s3://bucket/table/*.parquet');
+SELECT * FROM 's3://bucket/table/*.parquet';
 ```
 
 Then there's the extension ecosystem, and this is where it gets a little bit
