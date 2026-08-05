@@ -74,49 +74,39 @@ deciding whether rewrite or reuse has shifted even further towards rewrite.
 
 But pieces of software like DuckDB have decades of research, optimization,
 bug fixes, an enormous test surface — a level of maturity you do not regenerate
-with a prompt. Not every great piece of software can be written in Go, and 
+with a prompt. Not every great piece of software is written in Go, and 
 that's fine. For DuckDB, using CGO is simply the right call today.
 
 So, how are we using DuckDB?
 
-Our agents verify changes that engineers ship to production. To do that, they
-query telemetry: logs, metrics, traces. And agents are really good at
-generating SQL — give a model a schema and a question, it writes the query — so
-SQL is the interface, and every one of those queries lands on a service that
-looks like this.
+To query telemetry like logs, metrics, or traces, we give our agents access to
+a query engine over RPC via a `query` tool. The query engine is written in Go
+and where we embed DuckDB.
 
 [DIAGRAM: query path through the system — agent tool call → Go RPC service:
 authentication → storage resolution → embedded query engine (DuckDB via CGO)
 → object store holding Iceberg tables (Parquet files on S3/GCS); results
 streaming back to the agent as Arrow records]
 
-The entry point is a Go RPC service. The handler authenticates the caller,
-resolves which buckets this tenant can read, sets deadlines and
-instrumentation, then hands the SQL to the query engine: DuckDB, embedded in
-the process through CGO. The data is not in DuckDB. It lives in object storage,
-as Parquet files organized into Apache Iceberg tables — and all you need to
-know about Iceberg today is that it makes a pile of Parquet files behave like
-a logical table with a schema. DuckDB scans those files, executes the query,
-and streams the results back.
+The service handles authentication and configuration of the DuckDB instances
+to run against the customer data that the agent operates on behalf of. The
+Go layer also handles other functions like instrumentation for observability
+or caching to improve query performance.
 
-One design decision on this slide matters for the rest of the talk: DuckDB is
-only the execution layer. Who runs the query, against what data, with which
-credentials, under what limits — all of that is decided in Go, before DuckDB
-sees a single byte.
+So we embedded a C++ query engine in a Go service. What could possibly go wrong?
 
-Alright. So we embedded a C++ query engine in a Go service. What could possibly
-go wrong?
+Even if CGO is the right call, we still inherit a bunch of problems.
 
-Even when CGO is the right call, you inherit a very specific set of problems.
+The first problems appear at build time: a Go application is a simple statically
+linked binary, but it's not necessarily true when you bring CGO to the mix. We
+have to decide if the C code will be statically or dynamically linked. Using
+static linking tend to make the build much slower, because the C compiler and
+linkers get involved, and they are much slower than Go. Dynamic linking on the
+other hand makes the final program unpredictable and it can fail at runtime due
+to version mismatches causing missing symbol errors.
 
-The first one hits before the program even runs: linking. Out of the box, you
-have two options, and neither is great. Static linking means compiling a very
-large C++ project inside every Go build, there go your build times. Dynamic
-linking keeps builds fast, but now your binary depends on whatever libduckdb is
-installed on the machine that runs it, and "unpredictable" is not a word I want
-anywhere near production.
-
-Here's how we solve it: a Docker image makes dynamic linking deterministic.
+Like many of your I'm sure, we're using docker images to distribute software
+artifacts, and this is also how we solve this problem.
 
 ```dockerfile
 FROM ghcr.io/prefix-dev/pixi:latest AS pixi
@@ -133,14 +123,14 @@ RUN go build -tags=duckdb_use_lib
 ```
 
 pixi installs a pre-built libduckdb, pinned by its lock file, in its own image
-layer. The Go build links against it dynamically: one environment variable, one
-build tag. And Docker layer caching does the rest: when the Go code changes,
-the DuckDB layer is reused, not reinstalled. Builds stay fast, and every image
-ships the exact same libduckdb.
+layer. The Go build links against it dynamically with this build tag.
 
-That takes care of the build. The runtime problems are the interesting ones,
-and the root of all of them is this: you end up with two I/O stacks in one
-binary.
+This gives us a best-of-both-worlds model: the installation gets cached in the
+docker layer to keep the build fast, and we know exactly which version of the
+library we install, ensuring that we have a deterministic build process.
+
+That took care of the build problems, but we ran into several other issues,
+mostly caused by having two I/O stacks within the program.
 
 [DIAGRAM: two I/O stacks side by side in one process — left: Go runtime with
 goroutines, scheduler, netpoller, net/http, AWS SDK; right: DuckDB C++ stack
@@ -160,9 +150,8 @@ debugging session.
 Speaking of debugging: all the tools we love just stop working at the CGO
 boundary. pprof cannot see into the C++ side of the program. Your OpenTelemetry
 instrumentation doesn't exist over there. From the Go side, a query is one
-giant opaque function call: it enters CGO, time passes, results come out. What
-did it read? How many requests did it make to S3? Was the cache warm? You don't
-know.
+giant opaque function call: it enters CGO, time passes, results come out, and
+we have no idea of what happened underneath.
 
 And then there's authentication, which is where this gets genuinely painful.
 Our Go application already uses the AWS SDK. Credentials are configured, they
@@ -174,7 +163,7 @@ solved once, and now we have to solve it a second time, in a different
 language, inside a library we don't control.
 
 By embedding DuckDB, we inherited a whole bag of problems that Go normally
-solves for us out of the box. And this is not specific to us: every Go
+solves for us out of the box. And this is not specific to DuckDB: every Go
 application embedding a C library that does its own I/O runs into exactly this.
 
 So how did we solve it?
