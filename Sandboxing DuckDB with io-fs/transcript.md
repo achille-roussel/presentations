@@ -71,17 +71,14 @@ written in C++!
 So what are we using it for?
 
 Our agents verify changes that engineers ship to production, they do this by
-emitting tool calls to query telemetry like logs, metrics, traces... and DuckDB
-is the building block for the underlying query engine. The data itself lives in
-Apache Iceberg tables: think of Iceberg as a way to lay out Parquet files on an
-object store so they behave like logical tables. That's all we need to know
-about it for this talk.
-
-And one thing we've all learned these last couple of years: agents are really,
-really good at generating SQL. Give a model a schema and a question, it writes
-the query. So SQL became the interface between our agents and our customers'
-telemetry, and we needed an engine that could execute arbitrary SQL against
-object storage, embedded in our own infrastructure.
+emitting tool calls to query telemetry like logs, metrics, traces... and agents
+are really good at generating SQL: give a model a schema and a question, it
+writes the query. So SQL became the interface between our agents and our
+customers' telemetry, and we needed an engine that could execute arbitrary SQL
+against object storage, embedded in our own infrastructure. The data itself
+lives in Apache Iceberg tables — think of Iceberg as a way to lay out Parquet
+files on an object store so they behave like logical tables, and that's all we
+need to know about it for this talk.
 
 That's exactly what DuckDB is great at. But here's the important nuance: we use
 DuckDB as a query engine only. We don't store anything in it, the data lives in
