@@ -43,11 +43,10 @@ It runs in your process, there's no server, no cluster, no operations. And it's
 a real database: full SQL support, inserts, updates, transactions, the whole
 thing.
 
-But here's the part that I find the most powerful, and it's not the database
-part at all. DuckDB can query almost anything. You can point it at a CSV file
-and select from it. You can point it at JSON. You can point it at Parquet files
-and it will read the metadata, use the column statistics, and only fetch the
-pages it needs. And that's just the built-in formats.
+But the part I find the most powerful is not the database part at all: DuckDB
+can query almost anything. Point it at a CSV file and select from it. Point it
+at JSON. Point it at Parquet files and it will read the metadata, use the
+column statistics, and only fetch the pages it needs.
 
 ```sql
 SELECT * FROM read_csv('records.csv');
@@ -81,38 +80,29 @@ Apache Iceberg tables: think of Iceberg as a way to lay out Parquet files on an
 object store so they behave like logical tables. That's all we need to know
 about it for this talk.
 
-Now, one thing we've all learned over the last couple of years is that agents
-are really, really good at generating SQL. Give a model a schema and a
-question, and it will write you a query to explore the data set. So SQL became
-the interface between our agents and our customers' telemetry. And that means
-we needed a query engine that could execute arbitrary SQL against tables on
+And one thing we've all learned these last couple of years: agents are really,
+really good at generating SQL. Give a model a schema and a question, it writes
+the query. So SQL became the interface between our agents and our customers'
+telemetry, and we needed an engine that could execute arbitrary SQL against
 object storage, embedded in our own infrastructure.
 
 That's exactly what DuckDB is great at. But here's the important nuance: we use
-DuckDB as a query engine only. We don't use the database part of it at all. We
-don't store anything in DuckDB. The data lives in the object store, DuckDB just
-executes queries against it and produces results.
-
-And this is where DuckDB is really versatile: it favors composability. You can
-pick and choose the pieces you want. Our Go application is an RPC service; it
-handles authentication, it configures the query context, it does
-instrumentation, rate limiting, all the things a service does. DuckDB is just
-the engine sitting inside it, executing the query against the data.
+DuckDB as a query engine only. We don't store anything in it, the data lives in
+the object store. And DuckDB really favors this kind of composability, you pick
+and choose the pieces you want. Our Go application is an RPC service; it
+handles authentication, configuration, instrumentation, rate limiting, all the
+things a service does. DuckDB is just the engine sitting inside it, executing
+the query against the data.
 
 [DIAGRAM: RPC service architecture — incoming request flows through
 authentication, configuration, and instrumentation layers in the Go
 application; DuckDB sits embedded at the center as the query engine; data
 sources (object storage) on the right]
 
-A quick practical note on how we build this, because people always ask. DuckDB
-is distributed as a C++ library, and we use pixi, a package manager from the
-conda ecosystem, to install a pre-built libduckdb in our Docker images. We link
-dynamically, and because it happens inside a Docker build, it's fully
-deterministic. Dynamic linking here is just a pragmatic choice: it keeps
-compilation fast and avoids the build-time pain of compiling a large C++
-project inside every Go build. On the Go side it's one environment variable to
-point CGO at the library, and one build tag to tell the bindings to use it.
-That's the whole setup.
+A quick practical note, because people always ask: we install a pre-built
+libduckdb with pixi in our Docker images and link dynamically, one environment
+variable and one build tag. It keeps builds fast and deterministic, and we
+never compile C++ inside a Go build.
 
 ```dockerfile
 FROM ghcr.io/prefix-dev/pixi:latest AS pixi
@@ -140,13 +130,11 @@ whole talk about it. That used to be a bold move. And nowadays, with LLMs
 writing a lot of the code, rewriting has never been cheaper. The bar for
 "should we just rewrite this in Go" has genuinely moved.
 
-But it hasn't moved infinitely. There are still pieces of software that cross
-the threshold where reusing beats rewriting, and a query engine like DuckDB is
-firmly on the other side of that line. There are decades of query optimization
-research in there, thousands of contributors, an enormous test surface, and a
-level of maturity you do not regenerate with a prompt. Not every great piece of
-software can be written in Go, and that's fine. For DuckDB, embedding the C++
-code through CGO is simply the right call.
+But it hasn't moved infinitely. DuckDB is decades of query optimization
+research, thousands of contributors, an enormous test surface — a level of
+maturity you do not regenerate with a prompt. Not every great piece of software
+can be written in Go, and that's fine. For DuckDB, CGO is simply the right
+call.
 
 Closing the parenthesis. Because even when CGO is the right call, you inherit a
 very specific set of problems. And the root of all of them is this: you end up
@@ -180,23 +168,21 @@ rotate, role assumption works, all of it battle-tested. But DuckDB doesn't know
 about any of that. To let it read from S3, you install another extension, and
 you configure a whole different HTTP client, with its own credential chain, its
 own set of subtle behavior differences, and its own bugs. We had this problem
-solved once in our application, and now we have to solve it a second time, in a
-different language, inside a library we don't control.
+solved once, and now we have to solve it a second time, in a different
+language, inside a library we don't control.
 
 By embedding DuckDB, we inherited a whole bag of problems that Go normally
-solves for us out of the box. And I want to emphasize: this is not specific to
-us. Every Go application embedding DuckDB, and honestly, every Go application
-embedding any C library that does its own I/O, runs into exactly this.
+solves for us out of the box. And this is not specific to us: every Go
+application embedding a C library that does its own I/O runs into exactly this.
 
 So how did we solve it?
 
 Here's the thing: DuckDB is really well architected. All I/O in DuckDB, every
 single file operation, goes through a virtual file system abstraction. There's
 a FileSystem base class in the C++ code, and everything above it, the Parquet
-reader, the CSV reader, the buffer manager, only talks to that interface. By
-default, DuckDB is compiled with an implementation that uses the local file
-system. Extensions like httpfs work by plugging alternative implementations
-into that same abstraction.
+reader, the CSV reader, the buffer manager, only talks to that interface.
+Extensions like httpfs work by plugging alternative implementations into that
+same abstraction.
 
 And when I saw that, I thought to myself: wait. If httpfs can inject a file
 system, can I write my own virtual file system, and use CGO to inject Go into
@@ -260,50 +246,32 @@ file system layer below it, the go-duckfs extension crossing the CGO boundary,
 and the fs.FS implementation at the bottom fanning out to os.DirFS, S3 client,
 GCS client, in-memory maps]
 
-In the second part of this talk I'll walk you through exactly how this bridge
-is implemented, but first let me spend a minute on why it was worth building,
-because the benefits go quite a bit further than fixing the problems we just
-listed.
+I'll walk you through exactly how this bridge is implemented in a minute, but
+first: what did it buy us?
 
-First, sandboxing, it's in the title of the talk. Every single I/O operation
-DuckDB performs now goes through an interface we control. DuckDB cannot open a
-socket, cannot read a file, cannot touch anything we didn't explicitly hand it.
-If the file system we mount only exposes one customer's data, then that query,
-no matter what SQL the agent generated, can only ever read that customer's
-data. The sandbox isn't a policy we check, it's a structural property of the
-program. And when your queries are written by AI agents, let me tell you, that
-property helps you sleep at night.
+First, sandboxing, it's in the title of the talk. Every I/O operation DuckDB
+performs now goes through an interface we control. DuckDB cannot open a socket,
+cannot read a file, cannot touch anything we didn't explicitly hand it. If the
+file system we mount only exposes one customer's data, then no matter what SQL
+the agent generated, the query can only ever read that customer's data. The
+sandbox isn't a policy we check, it's a structural property of the program. And
+when your queries are written by AI agents, that property helps you sleep at
+night.
 
-Second, observability. Every byte DuckDB reads now flows through Go code, which
-means we can instrument all of it with the same tools as the rest of the
-application. Every file operation DuckDB performs gets attached to the
-OpenTelemetry trace of the request that triggered it, so when a query is slow,
-we see exactly why: cache misses, poor pushdown, an authentication error three
-layers down. I'll show you exactly how we wire the tracing context through in
-the third part of the talk.
+Second, observability. Every byte DuckDB reads now flows through Go code, so we
+can instrument all of it with the same tools as the rest of the application:
+every file operation gets attached to the OpenTelemetry trace of the request
+that triggered it. When a query is slow, we see exactly why. I'll show you how
+we wire the context through in part three.
 
-Third, virtualization means we can plug in any backend. When DuckDB asks for
-"s3://" something, our Open method sees the prefix and picks the AWS client;
-"gs://", the GCS client. And these are the same client instances the rest of
-the application already uses. Same credentials, same configuration, same
-connection pools, same retry logic. That painful "configure authentication
-twice" problem? Just gone.
-
-Fourth, performance. Because the file system is just a value, we can wrap it.
-We inject a caching layer between DuckDB and object storage, page-cache style,
-shared across queries. That's a plain fs.FS wrapper, ordinary Go code,
-unit-testable, instrumented like everything else.
-
-Fifth, testing. The standard library ships fstest.MapFS, an in-memory fs.FS
-built from a map. So in our tests, we craft a map of files in Go, mount it, and
-run a full DuckDB query engine against it. No fixtures on disk, no Docker, no
-network. Testing an embedded C++ database with a map literal. It's delightful.
-
-And finally, security in a broader sense. Think about what's left running as
-C++ in this design: pure computation over in-memory data. All I/O, including
-TLS, certificate validation, credential handling, happens in Go, in the same
-code paths as the rest of the application, in a memory-safe language. The C++
-attack surface shrinks down to, essentially, pure functions.
+And it keeps going. Any backend: when Open sees "s3://" it picks the AWS
+client, "gs://" the GCS client — the same clients, credentials, and retry logic
+the rest of the application already uses, so the double-authentication problem
+just disappears. Caching: the file system is a value, so we wrap it with a
+page-cache layer, in plain Go. Testing: mount an fstest.MapFS and run a full
+DuckDB engine against a map literal, no fixtures, no Docker, no network. And
+security: what's left running as C++ is pure computation over in-memory data —
+all I/O, including TLS and credential handling, happens in memory-safe Go.
 
 One small package. All the CGO integration problems we listed, solved. Plus
 capabilities we didn't have before.
@@ -314,8 +282,7 @@ capabilities we didn't have before.
 
 Alright, now let's get into the juicy stuff: how do you actually build this?
 The whole bridge is under a thousand lines of code, and it has exactly two
-pieces: a small C++ extension, and a set of exported Go functions. Let me walk
-you through both.
+pieces: a small C++ extension, and a set of exported Go functions.
 
 ### The shape of the DuckDB virtual file system API
 
@@ -344,11 +311,11 @@ public:
 };
 ```
 
-It's a classic object-oriented design: OpenFile returns a FileHandle, and then
-reads, seeks, stats all take that handle. Glob is in there too, because when
-you query "star dot parquet", someone has to expand that pattern. DuckDB lets
-you register any number of these file systems as subsystems, and routes each
-path to the one that claims it. That's exactly how httpfs works.
+Classic object-oriented design: OpenFile returns a FileHandle, and reads,
+seeks, stats all take that handle. Glob is in there too, because when you query
+"star dot parquet", someone has to expand that pattern. DuckDB lets you
+register any number of these file systems as subsystems, and routes each path
+to the one that claims it. That's exactly how httpfs works.
 
 Now here's the first problem. This API is C++ only. Virtual methods, templates,
 unique_ptr, std::string. And CGO does not speak C++. CGO can only call plain C
@@ -448,27 +415,22 @@ duckdb_state duckfs_register_subsystem(duckdb_database database, int id) {
 }
 ```
 
-Is reaching through the C API's opaque pointer into internal C++ types a little
-bold? Yes. But this is the kind of decision you get to make when you own the
-glue layer: we pin the DuckDB version in our build anyway, so this is a
+Is this a little bold? Yes. But that's a decision you get to make when you own
+the glue layer: we pin the DuckDB version in our build anyway, so it's a
 controlled risk, checked by tests.
 
 ### Retaining Go objects across the boundary
 
-Now, you may have noticed something in all the code I've shown so far: there is
-not a single Go pointer crossing into C++. Everything is done with these little
-integer IDs. That's not an accident, and it's the second implementation
-challenge I want to talk about, because anyone who bridges Go with C will hit
-it.
+Now, you may have noticed: there is not a single Go pointer crossing into C++
+in any of this code. Everything is done with these little integer IDs. That's
+not an accident, and it's the second implementation challenge, because anyone
+who bridges Go with C will hit it.
 
-Here's the constraint. The natural design would be: open a file, hand C++ a
-pointer to the fs.File, and have every read pass that pointer back. But the
-CGO pointer passing rules say no. C memory must not hold Go pointers across
-calls: the garbage collector can't see into C++, so it wouldn't know the object
-is still referenced, and nothing keeps it alive. These rules exist so the
-runtime keeps its freedom, and today's collector already moves goroutine
-stacks; you don't want to be the program that breaks when it starts moving your
-heap.
+The natural design would be: open a file, hand C++ a pointer to the fs.File,
+and have every read pass that pointer back. But the CGO pointer passing rules
+say no. C memory must not hold Go pointers across calls: the garbage collector
+can't see into C++, so nothing would keep the object alive, or stop it from
+being moved.
 
 So instead of passing pointers out, we keep every Go object at home, in a
 registry, and we hand C++ a claim ticket.
@@ -493,20 +455,17 @@ var (
 3, 7, 12); Go side holds the registry slices mapping those ids to live fs.FS
 and fs.File values; arrows showing lookup on each call crossing the boundary]
 
-Two registries: one for the mounted file systems, one for open files. When
-DuckDB opens a file, we register the fs.File and return its index. Every
-subsequent operation carries that integer, and the trampoline looks the object
-up again. When the file closes, we unregister it, and from that point the
-object is garbage like any other Go value. The registry is the only thing
-keeping these objects alive, which means the lifetime of Go objects is
-explicitly tied to the lifetime of DuckDB's file handles. The mutex makes it
-safe to call from any thread, and that matters because DuckDB will call us from
-its own worker threads, not from a goroutine.
+Two registries: one for mounted file systems, one for open files. When DuckDB
+opens a file, we register the fs.File and return its index. Every subsequent
+operation carries that integer, and the trampoline looks the object up again.
+When the file closes, we unregister it, and the object becomes garbage like any
+other Go value: the lifetime of the Go object is explicitly tied to the
+lifetime of DuckDB's file handle. And the mutex matters, because DuckDB calls
+us from its own worker threads, not from a goroutine.
 
-And that's really all there is to the core of the bridge: a C++ class that
-turns virtual calls into C calls, exported Go functions that turn C calls into
-interface calls, and an ID registry so no pointer ever crosses the line. Under
-a thousand lines, total.
+And that's really the whole bridge: a C++ class that turns virtual calls into C
+calls, exported Go functions that turn C calls into interface calls, and an ID
+registry so no pointer ever crosses the line. Under a thousand lines, total.
 
 ---
 
@@ -517,11 +476,11 @@ local, static data, you're done. But the moment we put this in production, we
 hit a usability problem that I think is the most instructive part of the whole
 project: context.
 
-Think about what our service does. An RPC comes in. It carries a
-context.Context, and that context carries everything: the deadline, the
-cancellation signal, the tenant identity, the OpenTelemetry span. Every I/O
-operation we perform on behalf of that request is supposed to flow through that
-context. That's the contract of a well-behaved Go service.
+An RPC comes in. It carries a context.Context, and that context carries
+everything: the deadline, the cancellation signal, the tenant identity, the
+OpenTelemetry span. Every I/O operation we perform on behalf of that request is
+supposed to flow through that context. That's the contract of a well-behaved Go
+service.
 
 Now trace the path of a read. The request handler executes a SQL query. The
 query descends into DuckDB, into C++. DuckDB schedules work on its own worker
@@ -545,10 +504,9 @@ context needs to travel]
 So how do we get the request's context back on the other side of a C++ thread
 pool?
 
-The answer is a pattern you've already seen once in this talk: the file system
-is just a value, and values can capture things. When the request arrives, we
-construct the fs.FS for that specific request, and we store the context inside
-it.
+With a pattern you've already seen once in this talk: the file system is just a
+value, and values can capture things. When the request arrives, we construct
+the fs.FS for that specific request, and we store the context inside it.
 
 ```go
 // FS binds the storage registry to the context of one request.
@@ -570,31 +528,26 @@ func (fsys *fileSystem) Open(name string) (fs.File, error) {
 }
 ```
 
-Open re-injects the captured context into everything it does: resolving the
-bucket, authenticating, and the file it returns carries the context too, so
-every ReadAt turns into an object store request made with the request's
-context. Deadline, cancellation, tracing span: they all made it across the C++
-thread pool, because they were smuggled inside the file system value itself.
+Open re-injects the captured context into everything it does, and the file it
+returns carries it too, so every ReadAt becomes an object store request made
+with the request's context. Deadline, cancellation, tracing span: they all made
+it across the C++ thread pool, smuggled inside the file system value itself.
 
 Now, I know what some of you are thinking, because it's written in the context
-package documentation: "do not store a context inside a struct type". And as a
-general rule, that's right. But notice why the rule exists: a context stored in
-a long-lived object outlives the request it belongs to. Here, the file system
-value IS the request-scoped object. It's created when the query starts, it's
-used by the query, and it dies with the query. The lifetime of the struct and
-the lifetime of the context are the same, which is exactly the situation where
-capturing it is correct. This is the escape hatch the guideline leaves open,
-and crossing a foreign thread pool is precisely what it's for.
+package documentation: "do not store a context inside a struct type". As a
+general rule, that's right. But the rule exists because a context stored in a
+long-lived object outlives its request. Here, the file system value IS the
+request-scoped object: it's created when the query starts, and it dies with the
+query. When the lifetimes coincide, capturing the context is correct — this is
+the escape hatch the guideline leaves open, and crossing a foreign thread pool
+is precisely what it's for.
 
-There's one last wrinkle, and it comes from performance. Creating a DuckDB
-connector is expensive, so we don't create one per request, we pool instances
-and reuse them. But the file system is registered with DuckDB once, when the
-connector is created. So how do we swap in a per-request file system on a
-pooled instance?
-
-With one more layer of indirection: the file system we actually mount is a
-tiny resettable wrapper, and each query points it at the current request's
-context-bound file system.
+One last wrinkle, from performance. Creating a DuckDB connector is expensive,
+so we pool instances and reuse them. But the file system is registered with
+DuckDB once, at creation. How do we swap in a per-request file system on a
+pooled instance? One more layer of indirection: the file system we actually
+mount is a tiny resettable wrapper, and each query points it at the current
+request's context-bound file system.
 
 ```go
 type duckDBFileSystem struct{ fsys fs.FS }
@@ -647,28 +600,26 @@ one highlighted showing an authentication error]
 
 So let me leave you with three takeaways.
 
-First, on software design. In the age of LLMs, I think we tend to overlook how
-much good design matters. The bar for what should be rewritten versus reused
-has moved, no question. But there are still high-quality pieces of software out
-there that we should reuse, and when we do, investing in the glue layer is
-where the leverage is. DuckDB exposing a virtual file system abstraction, and
-Go shipping fs.FS in the standard library, is what made a one-thousand-line
-bridge possible. That's not luck, that's two well-designed systems meeting in
-the middle. And the pattern generalizes: most serious C libraries that do I/O
-expose some virtual file system hook. SQLite has one. If you can connect that
-hook to io/fs, everything I showed you today applies.
+First, on software design. In the age of LLMs, the bar for what should be
+rewritten versus reused has moved, no question. But there are still
+high-quality pieces of software out there that we should reuse, and when we do,
+the glue layer is where the leverage is. DuckDB exposing a virtual file system
+abstraction, and Go shipping fs.FS in the standard library, is what made a
+one-thousand-line bridge possible. That's not luck, that's two well-designed
+systems meeting in the middle. And the pattern generalizes: most serious C
+libraries that do I/O expose some virtual file system hook. SQLite has one. If
+you can connect that hook to io/fs, everything I showed you today applies.
 
-Second, the implementation techniques we covered are the reusable part: a thin
-C++ class to translate an object-oriented API into plain C functions, //export
-to let C call Go, integer handles instead of pointers so the garbage collector
-stays free, and request-scoped values to carry context across a foreign thread
-pool. That toolbox works for far more than DuckDB.
+Second, the implementation techniques are the reusable part: a thin C++ class
+to translate an object-oriented API into plain C functions, //export to let C
+call Go, integer handles instead of pointers so the garbage collector stays
+free, and request-scoped values to carry context across a foreign thread pool.
+That toolbox works for far more than DuckDB.
 
 And third, I hope you walk away with a more refined sense of when CGO is the
-right tool. Not "never", not "whatever", but: know the problems you're signing
-up for, the two I/O stacks, the observability wall, the duplicated
-configuration, and know that with the right abstraction at the boundary, you
-can make most of them disappear.
+right tool. Not "never", not "whatever": know the problems you're signing up
+for, and know that with the right abstraction at the boundary, you can make
+most of them disappear.
 
 Everything I showed today is open-source at github.com/firetiger-oss/go-duckfs.
 It's MIT licensed, issues and contributions are very welcome, there's plenty
