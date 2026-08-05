@@ -55,7 +55,7 @@ SELECT * FROM 's3://bucket/table/*.parquet';
 
 Then there's the extension ecosystem, and this is where it gets a little bit
 crazy. There are extensions to query files over HTTP, on S3, on GCS. There are
-extensions to connect to Postgres, to ClickHouse, to Iceberg tables. And
+extensions to connect to Postgres, or ClickHouse, or Iceberg tables. And
 because it's all SQL, you can join across all of these in a single query. You
 can join a Parquet file on S3 with a Postgres table and a CSV file on your
 laptop, in one statement.
@@ -68,7 +68,7 @@ definitely not the kind of things we want to rewrite. It is an extremely
 powerful piece of software, and it's free, and it's open-source. But it's
 written in C++!
 
-So what are we using it for?
+So, how are we using DuckDB?
 
 Our agents verify changes that engineers ship to production, they do this by
 emitting tool calls to query telemetry like logs, metrics, traces... and agents
@@ -80,23 +80,22 @@ lives in Apache Iceberg tables — think of Iceberg as a way to lay out Parquet
 files on an object store so they behave like logical tables, and that's all we
 need to know about it for this talk.
 
-That's exactly what DuckDB is great at. But here's the important nuance: we use
-DuckDB as a query engine only. We don't store anything in it, the data lives in
-the object store. And DuckDB really favors this kind of composability, you pick
-and choose the pieces you want. Our Go application is an RPC service; it
-handles authentication, configuration, instrumentation, rate limiting, all the
-things a service does. DuckDB is just the engine sitting inside it, executing
-the query against the data.
+That's exactly what DuckDB is great at. But notice how we're using it: as a
+query engine, and nothing else. We store nothing in DuckDB, the data lives in
+the object store. This is something I love about DuckDB, it's composable, you
+pick the pieces you need. Our Go application is an RPC service, it handles
+authentication, configuration, instrumentation, all the things a service does.
+DuckDB sits inside it with one job: execute the query, return the results.
 
 [DIAGRAM: RPC service architecture — incoming request flows through
 authentication, configuration, and instrumentation layers in the Go
 application; DuckDB sits embedded at the center as the query engine; data
 sources (object storage) on the right]
 
-A quick practical note, because people always ask: we install a pre-built
-libduckdb with pixi in our Docker images and link dynamically, one environment
-variable and one build tag. It keeps builds fast and deterministic, and we
-never compile C++ inside a Go build.
+One last practical thing, because people always ask: how does the C++ get into
+the Go binary? One Dockerfile. pixi installs a pre-built libduckdb, and we link
+against it dynamically: one environment variable, one build tag, done. Builds
+stay fast and deterministic, and I never compile C++ inside a Go build.
 
 ```dockerfile
 FROM ghcr.io/prefix-dev/pixi:latest AS pixi
