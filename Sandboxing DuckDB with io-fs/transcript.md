@@ -14,36 +14,35 @@ diagram is displayed.
 Hello everyone, thank you all for being here.
 
 My name is Achille, I'm currently the Co-Founder and CTO of Firetiger, where we
-develop AI agents that verify the changes you push to production. I've been
-using Go since 2014 and authored and contributed to several projects, including
-the Go runtime and compiler.
+develop AI agents that verify your code changes after you push to production.
+I've been using Go since 2014 and authored and contributed to a bunch of projects,
+including the Go runtime and compiler.
 
 What I'm here to talk to you about today is about more than Go.
 
-We're going to talk about DuckDB. We're going to talk about CGO, and I know
-some of you just shivered, stay with me. We're going to talk about io/fs, which
-I think is an underrated corner of the standard library. And how we used all
-those tools as the fundamental building block in the query engine that our
-agents use to access data.
+I want to talk about DuckDB, who here has heard of DuckDB before?
+I'm also going to talk about CGO. How many of you have actually used CGO in
+production?
+We're going to talk about io/fs, which I think is an underrated corner of the
+standard library.
+All those pieces are the fundamental building blocks of the query engine that
+our agents use to access data.
 
-Before we dive in, let me ask: who here has used DuckDB before? Alright, a good
-chunk of the room. And who here has shipped CGO to production on purpose? Fewer
-hands (or more hands). That's reassuring (or not). I hope that today, we'll all
-feel a little better about using CGO, when it matters, because we'll have seen
-examples of when to reach out for it, and what to lookout for, with a practical
-use case of integrating DuckDB in Go applications.
+I know there are ongoing research to figure out how to interface Go with C
+directly without CGO, but today CGO is still the practical solution, so this
+is more of a field report on building actual production applications with it,
+what we learned, what was hard, and what we had to build.
 
 Let's start with DuckDB.
 
-DuckDB is an embedded SQL database optimized for analytics workloads: columnar,
-vectorized, built for scanning and aggregating large amounts of data. It runs
-in your process, there's no server, no cluster, no operations. And it's a real
-database: full SQL support, inserts, updates, transactions, the whole thing.
+DuckDB is an embedded SQL database optimized for analytics workloads: it's not
+a database server, it's a library you include in your application. It works
+best with columnar file formats and implement vectorized algorithms internally.
 
-But the part I find the most powerful is not the database part at all: DuckDB
-can query almost anything. Point it at a CSV file and select from it. Point it
-at JSON. Point it at Parquet files and it will read the metadata, use the
-column statistics, and only fetch the pages it needs.
+But it can query almost anything. Point it at a CSV file and select from it.
+Whether it's a CSV, JSON, Parquet, or any of the dozens of formats that it
+supports, you can use it as your swiss-army knife wherever you need your
+application to query data.
 
 ```sql
 SELECT * FROM 'records.csv';
@@ -53,17 +52,15 @@ SELECT * FROM 'events.json';
 SELECT * FROM 's3://bucket/table/*.parquet';
 ```
 
-Then there's the extension ecosystem, and this is where it gets a little bit
-crazy. There are extensions to query files over HTTP, on S3, on GCS. There are
-extensions to connect to Postgres, or ClickHouse, or Iceberg tables. And
-because it's all SQL, you can join across all of these in a single query. You
-can join a Parquet file on S3 with a Postgres table and a CSV file on your
-laptop, in one statement.
+There's also a wide extension ecosystem, and this is where it gets a little bit
+crazy. There are extensions to query pretty much anything anywhere, including
+other databases like Postgres or Apache Iceberg.
+Because it's all SQL, you can join across all of these in a single query.
 
 Under the hood, DuckDB builds one logical query plan, and then maps it to a
-physical plan for each data source, pushing predicates down whenever the source
-supports it. So when you filter on a column, that filter travels as close to
-the data as possible. This is decades of database research and engineering,
+physical plan for each data source, doing predicate pushdown whenever the source
+allows it. So when you filter on a column, that filter travels as close to
+the data as possible. This is a decade of database research and engineering,
 definitely not the kind of things we want to rewrite. It is an extremely
 powerful piece of software, and it's free, and it's open-source. But it's
 written in C++!
@@ -71,11 +68,6 @@ written in C++!
 In the Go ecosystem, we have a strong tendency to rewrite everything in Go.
 And nowadays with coding agents, rewriting has never been cheaper. The bar for
 deciding whether rewrite or reuse has shifted even further towards rewrite.
-
-But pieces of software like DuckDB have decades of research, optimization,
-bug fixes, an enormous test surface — a level of maturity you do not regenerate
-with a prompt. Not every great piece of software is written in Go, and 
-that's fine. For DuckDB, using CGO is simply the right call today.
 
 So, how are we using DuckDB?
 
